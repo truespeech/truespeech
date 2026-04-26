@@ -11,7 +11,7 @@
 // underlying field (e.g. order_date_month). We post-process: rename
 // the column back to "month" in the returned QueryResult so the user
 // sees what they wrote.
-import { resolveRegion, intersectRegions } from "./region.js";
+import { resolveRegion, intersectRegions, firstDayOf, lastDayOf } from "./region.js";
 export async function execute(stmt, opts) {
     switch (stmt.kind) {
         case "compute":
@@ -207,47 +207,6 @@ function inclusiveInterval(lit, dimension) {
         { dimension, operator: ">=", value: firstDayOf(lit) },
         { dimension, operator: "<=", value: lastDayOf(lit) },
     ];
-}
-function firstDayOf(lit) {
-    switch (lit.unit) {
-        case "year":
-            return iso(lit.year, 1, 1);
-        case "quarter": {
-            const q = lit.quarter ?? 1;
-            const month = (q - 1) * 3 + 1;
-            return iso(lit.year, month, 1);
-        }
-        case "month":
-            return iso(lit.year, lit.month ?? 1, 1);
-        case "day":
-            return iso(lit.year, lit.month ?? 1, lit.day ?? 1);
-    }
-}
-function lastDayOf(lit) {
-    switch (lit.unit) {
-        case "year":
-            return iso(lit.year, 12, 31);
-        case "quarter": {
-            const q = lit.quarter ?? 1;
-            const lastMonth = q * 3;
-            return iso(lit.year, lastMonth, daysInMonth(lit.year, lastMonth));
-        }
-        case "month": {
-            const m = lit.month ?? 1;
-            return iso(lit.year, m, daysInMonth(lit.year, m));
-        }
-        case "day":
-            return iso(lit.year, lit.month ?? 1, lit.day ?? 1);
-    }
-}
-function iso(year, month, day) {
-    return `${year}-${pad2(month)}-${pad2(day)}`;
-}
-function pad2(n) {
-    return n < 10 ? `0${n}` : `${n}`;
-}
-function daysInMonth(year, month) {
-    return new Date(year, month, 0).getDate();
 }
 // ===== Constraint → WHERE clauses =====
 function constraintToWhere(c) {

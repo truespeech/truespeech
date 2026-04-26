@@ -31,6 +31,7 @@ import type {
 } from "./adapters.js";
 import type { TrueSpeechError } from "./errors.js";
 import { makeError } from "./errors.js";
+import { daysInMonth, pad2 } from "./region.js";
 
 export function validate(
   ast: Statement,
@@ -566,10 +567,3 @@ function compareLiteral(a: TimeLiteral, b: TimeLiteral): number {
   return 0;
 }
 
-function daysInMonth(year: number, month: number): number {
-  return new Date(year, month, 0).getDate();
-}
-
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : `${n}`;
-}

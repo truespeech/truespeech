@@ -168,7 +168,7 @@ function formatValue(v) {
     return `'${v}'`;
 }
 // ===== Date helpers =====
-function firstDayOf(lit) {
+export function firstDayOf(lit) {
     switch (lit.unit) {
         case "year":
             return iso(lit.year, 1, 1);
@@ -183,7 +183,7 @@ function firstDayOf(lit) {
             return iso(lit.year, lit.month ?? 1, lit.day ?? 1);
     }
 }
-function lastDayOf(lit) {
+export function lastDayOf(lit) {
     switch (lit.unit) {
         case "year":
             return iso(lit.year, 12, 31);
@@ -203,10 +203,10 @@ function lastDayOf(lit) {
 function iso(y, m, d) {
     return `${y}-${pad2(m)}-${pad2(d)}`;
 }
-function pad2(n) {
+export function pad2(n) {
     return n < 10 ? `0${n}` : `${n}`;
 }
-function daysInMonth(year, month) {
+export function daysInMonth(year, month) {
     return new Date(year, month, 0).getDate();
 }
 function year(iso) {

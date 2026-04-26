@@ -10,6 +10,7 @@
 // the first. The editor surfaces them as squigglies; execute() stops
 // before running anything if the list is non-empty.
 import { makeError } from "./errors.js";
+import { daysInMonth, pad2 } from "./region.js";
 export function validate(ast, adapter) {
     const errors = [];
     if (ast.kind === "compute") {
@@ -409,10 +410,4 @@ function compareLiteral(a, b) {
         return (a.day ?? 0) - (b.day ?? 0);
     }
     return 0;
-}
-function daysInMonth(year, month) {
-    return new Date(year, month, 0).getDate();
-}
-function pad2(n) {
-    return n < 10 ? `0${n}` : `${n}`;
 }

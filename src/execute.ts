@@ -39,7 +39,7 @@ import type {
   Grain,
   DimensionInfo,
 } from "./adapters.js";
-import { resolveRegion, intersectRegions } from "./region.js";
+import { resolveRegion, intersectRegions, firstDayOf, lastDayOf } from "./region.js";
 
 export interface ExecuteOpts {
   semanticLayer: SemanticLayerAdapter;
@@ -310,52 +310,6 @@ function inclusiveInterval(
     { dimension, operator: ">=", value: firstDayOf(lit) },
     { dimension, operator: "<=", value: lastDayOf(lit) },
   ];
-}
-
-function firstDayOf(lit: TimeLiteral): string {
-  switch (lit.unit) {
-    case "year":
-      return iso(lit.year, 1, 1);
-    case "quarter": {
-      const q = lit.quarter ?? 1;
-      const month = (q - 1) * 3 + 1;
-      return iso(lit.year, month, 1);
-    }
-    case "month":
-      return iso(lit.year, lit.month ?? 1, 1);
-    case "day":
-      return iso(lit.year, lit.month ?? 1, lit.day ?? 1);
-  }
-}
-
-function lastDayOf(lit: TimeLiteral): string {
-  switch (lit.unit) {
-    case "year":
-      return iso(lit.year, 12, 31);
-    case "quarter": {
-      const q = lit.quarter ?? 1;
-      const lastMonth = q * 3;
-      return iso(lit.year, lastMonth, daysInMonth(lit.year, lastMonth));
-    }
-    case "month": {
-      const m = lit.month ?? 1;
-      return iso(lit.year, m, daysInMonth(lit.year, m));
-    }
-    case "day":
-      return iso(lit.year, lit.month ?? 1, lit.day ?? 1);
-  }
-}
-
-function iso(year: number, month: number, day: number): string {
-  return `${year}-${pad2(month)}-${pad2(day)}`;
-}
-
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : `${n}`;
-}
-
-function daysInMonth(year: number, month: number): number {
-  return new Date(year, month, 0).getDate();
 }
 
 // ===== Constraint → WHERE clauses =====

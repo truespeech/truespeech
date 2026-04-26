@@ -200,7 +200,7 @@ function formatValue(v: string | number): string {
 
 // ===== Date helpers =====
 
-function firstDayOf(lit: TimeLiteral): string {
+export function firstDayOf(lit: TimeLiteral): string {
   switch (lit.unit) {
     case "year":
       return iso(lit.year, 1, 1);
@@ -216,7 +216,7 @@ function firstDayOf(lit: TimeLiteral): string {
   }
 }
 
-function lastDayOf(lit: TimeLiteral): string {
+export function lastDayOf(lit: TimeLiteral): string {
   switch (lit.unit) {
     case "year":
       return iso(lit.year, 12, 31);
@@ -238,11 +238,11 @@ function iso(y: number, m: number, d: number): string {
   return `${y}-${pad2(m)}-${pad2(d)}`;
 }
 
-function pad2(n: number): string {
+export function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }
 
-function daysInMonth(year: number, month: number): number {
+export function daysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
 }
 
