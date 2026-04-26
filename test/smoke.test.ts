@@ -5,8 +5,18 @@ import {
   TrueSpeech,
   TrueSpeechExecutionError,
   renderError,
+  renderRegion,
 } from "../src/index.js";
-import { mockDatabase, retailSalesMock } from "./helpers/mocks.js";
+import type {
+  ComputeResult,
+  RegisterResult,
+  CheckResult,
+} from "../src/index.js";
+import {
+  mockDatabase,
+  mockLexicon,
+  retailSalesMock,
+} from "./helpers/mocks.js";
 
 describe("smoke", () => {
   it("exports a VERSION", () => {
@@ -105,5 +115,90 @@ describe("TrueSpeech — public API", () => {
     const { ts, database } = build();
     await ts.execute("COMPUTE total_sales OVER 2026");
     assert.equal(database.executed.length, 1);
+  });
+});
+
+describe("TrueSpeech — lexicon end-to-end", () => {
+  function build() {
+    const semanticLayer = retailSalesMock();
+    const database = mockDatabase({
+      columns: ["region", "total_sales"],
+      rows: [["northeast", 100]],
+    });
+    const lexicon = mockLexicon();
+    return {
+      ts: new TrueSpeech({ semanticLayer, database, lexicon }),
+      lexicon,
+      database,
+    };
+  }
+
+  it("REGISTER → CHECK round-trip surfaces the entry with overlap", async () => {
+    const { ts, lexicon } = build();
+
+    const reg = (await ts.execute(
+      `REGISTER bot IMPACTING total_sales OVER 2026-02-03 to 2026-02-04 WITH "credential stuffing"`
+    )) as RegisterResult;
+    assert.equal(reg.statement, "register");
+    assert.equal(lexicon.entries.length, 1);
+
+    const chk = (await ts.execute(
+      `CHECK total_sales OVER 2026-Q1`
+    )) as CheckResult;
+    assert.equal(chk.matches.length, 1);
+    assert.equal(chk.matches[0].entry.name, "bot");
+    assert.equal(chk.matches[0].overlap.timeStart, "2026-02-03");
+    assert.equal(chk.matches[0].overlap.timeEnd, "2026-02-04");
+  });
+
+  it("REGISTER → COMPUTE surfaces overlap in result.reconciliation", async () => {
+    const { ts } = build();
+    await ts.execute(
+      `REGISTER mobile_bug IMPACTING total_sales OVER 2025-07 to 2025-12 WITH "events undercounted"`
+    );
+
+    const c = (await ts.execute(
+      `COMPUTE total_sales OVER 2025-09`
+    )) as ComputeResult;
+    assert.equal(c.reconciliation.length, 1);
+    assert.equal(c.reconciliation[0].entry.name, "mobile_bug");
+    assert.equal(c.reconciliation[0].overlap.timeStart, "2025-09-01");
+    assert.equal(c.reconciliation[0].overlap.timeEnd, "2025-09-30");
+  });
+
+  it("non-overlapping COMPUTE returns empty reconciliation", async () => {
+    const { ts } = build();
+    await ts.execute(
+      `REGISTER bot IMPACTING total_sales OVER 2026-02-03 to 2026-02-04 WITH "x"`
+    );
+    const c = (await ts.execute(
+      `COMPUTE total_sales OVER 2026-03`
+    )) as ComputeResult;
+    assert.deepEqual(c.reconciliation, []);
+  });
+
+  it("REGISTER without lexicon throws on execute()", async () => {
+    const ts = new TrueSpeech({
+      semanticLayer: retailSalesMock(),
+      database: mockDatabase(),
+    });
+    await assert.rejects(
+      () =>
+        ts.execute(
+          `REGISTER bot IMPACTING total_sales OVER 2026 WITH "x"`
+        ),
+      /requires a lexicon adapter/
+    );
+  });
+
+  it("renderRegion is exported and usable on a CHECK match", async () => {
+    const { ts } = build();
+    await ts.execute(
+      `REGISTER bot IMPACTING total_sales OVER 2026-Q1 WITH "x"`
+    );
+    const chk = (await ts.execute(
+      `CHECK total_sales OVER 2026`
+    )) as CheckResult;
+    assert.equal(renderRegion(chk.matches[0].overlap), "2026-Q1");
   });
 });

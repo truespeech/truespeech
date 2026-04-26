@@ -41,6 +41,10 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   "not",
   "asc",
   "desc",
+  "register",
+  "check",
+  "impacting",
+  "with",
 ]);
 
 export const GRAINS: ReadonlySet<string> = new Set([

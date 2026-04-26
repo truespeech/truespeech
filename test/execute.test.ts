@@ -2,13 +2,30 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { tokenize } from "../src/tokenize.js";
 import { parse } from "../src/parse.js";
-import { execute } from "../src/execute.js";
-import type { ComputeStatement } from "../src/ast.js";
+import { execute as executeRaw } from "../src/execute.js";
+import type {
+  ComputeStatement,
+  Statement,
+} from "../src/ast.js";
 import {
   mockDatabase,
   retailSalesMock,
 } from "./helpers/mocks.js";
-import type { SemanticQuery } from "../src/adapters.js";
+import type {
+  SemanticQuery,
+  SemanticLayerAdapter,
+  DatabaseAdapter,
+} from "../src/adapters.js";
+
+// Backwards-compatible shim: these tests predate the dispatching
+// execute(stmt, opts) signature. Wrap so existing call sites keep working.
+function execute(
+  stmt: Statement,
+  semanticLayer: SemanticLayerAdapter,
+  database: DatabaseAdapter
+) {
+  return executeRaw(stmt, { semanticLayer, database });
+}
 
 function ast(src: string): ComputeStatement {
   const r = parse(tokenize(src));

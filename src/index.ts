@@ -10,6 +10,7 @@ import type { Statement } from "./ast.js";
 import type {
   SemanticLayerAdapter,
   DatabaseAdapter,
+  LexiconAdapter,
 } from "./adapters.js";
 import type { TrueSpeechError } from "./errors.js";
 import type { ExecuteResult } from "./execute.js";
@@ -61,6 +62,12 @@ export type {
 export type {
   SemanticLayerAdapter,
   DatabaseAdapter,
+  LexiconAdapter,
+  LexiconEntry,
+  Impact,
+  ResolvedRegion,
+  ResolvedConstraint,
+  LexiconMatch,
   MetricInfo,
   DimensionInfo,
   SemanticQuery,
@@ -78,7 +85,13 @@ export type {
   ErrorCode,
   RelatedSpan,
 } from "./errors.js";
-export type { ExecuteResult } from "./execute.js";
+export type {
+  ExecuteResult,
+  ExecuteOpts,
+  ComputeResult,
+  RegisterResult,
+  CheckResult,
+} from "./execute.js";
 
 export {
   TrueSpeechExecutionError,
@@ -88,6 +101,13 @@ export {
 
 export { resultColumnNames } from "./validate.js";
 
+export {
+  resolveRegion,
+  intersectRegions,
+  renderRegion,
+  renderTimeRegion,
+} from "./region.js";
+
 export { osiAdapter } from "./osi-adapter.js";
 export type { OsiLikeRuntime } from "./osi-adapter.js";
 
@@ -96,6 +116,7 @@ export type { OsiLikeRuntime } from "./osi-adapter.js";
 export interface TrueSpeechOptions {
   semanticLayer: SemanticLayerAdapter;
   database: DatabaseAdapter;
+  lexicon?: LexiconAdapter;
 }
 
 export interface ParseResult {
@@ -149,16 +170,11 @@ export class TrueSpeech {
     if (validateErrors.length > 0) {
       throw new TrueSpeechExecutionError(validateErrors);
     }
-    if (ast.kind !== "compute") {
-      throw new TrueSpeechExecutionError([
-        {
-          code: "unexpected_token",
-          message: `Statement kind "${(ast as Statement).kind}" not yet supported`,
-          span: ast.span,
-        },
-      ]);
-    }
-    return executeAst(ast, this.opts.semanticLayer, this.opts.database);
+    return executeAst(ast, {
+      semanticLayer: this.opts.semanticLayer,
+      database: this.opts.database,
+      lexicon: this.opts.lexicon,
+    });
   }
 }
 

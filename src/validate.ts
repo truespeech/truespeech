@@ -13,6 +13,9 @@
 import type {
   Statement,
   ComputeStatement,
+  RegisterStatement,
+  CheckStatement,
+  MetricRef,
   OverClause,
   TimeRegion,
   TimeLiteral,
@@ -36,6 +39,10 @@ export function validate(
   const errors: TrueSpeechError[] = [];
   if (ast.kind === "compute") {
     validateCompute(ast, adapter, errors);
+  } else if (ast.kind === "register") {
+    validateRegister(ast, adapter, errors);
+  } else if (ast.kind === "check") {
+    validateCheck(ast, adapter, errors);
   }
   return errors;
 }
@@ -91,6 +98,154 @@ function validateCompute(
 
   if (stmt.orderBy) {
     validateOrderBy(stmt, errors);
+  }
+}
+
+// ===== REGISTER =====
+
+function validateRegister(
+  stmt: RegisterStatement,
+  adapter: SemanticLayerAdapter,
+  errors: TrueSpeechError[]
+): void {
+  const allMetrics = adapter.listMetrics();
+
+  for (const clause of stmt.impactClauses) {
+    if (clause.metrics.length === 0) continue;
+
+    // Validate each metric exists and gather (metric, dims, primaryTime)
+    // tuples. Skip OVER validation for metrics we couldn't resolve.
+    const resolved: {
+      ref: MetricRef;
+      dims: DimensionInfo[];
+      primaryTime: DimensionInfo | null;
+    }[] = [];
+
+    for (const metricRef of clause.metrics) {
+      if (!allMetrics.find((m) => m.name === metricRef.name)) {
+        errors.push(
+          makeError({
+            code: "unknown_metric",
+            message: `Unknown metric "${metricRef.name}"`,
+            span: metricRef.span,
+            help:
+              allMetrics.length > 0
+                ? `Available metrics: ${allMetrics.map((m) => m.name).join(", ")}`
+                : undefined,
+          })
+        );
+        continue;
+      }
+      const dims = adapter.dimensionsForMetric(metricRef.name);
+      const primaryTime = adapter.primaryTimeForMetric(metricRef.name);
+      if (!primaryTime) {
+        errors.push(
+          makeError({
+            code: "missing_primary_time",
+            message: `Cannot impact metric "${metricRef.name}" — no primary time dimension declared`,
+            span: metricRef.span,
+            help:
+              "Mark a time field on the metric's dataset as is_primary: true",
+          })
+        );
+        continue;
+      }
+      resolved.push({ ref: metricRef, dims, primaryTime });
+    }
+
+    if (resolved.length === 0) continue;
+
+    // Multi-metric IMPACTING shorthand requires shared primary time.
+    if (resolved.length > 1) {
+      const firstPrimary = resolved[0].primaryTime!.name;
+      for (let i = 1; i < resolved.length; i++) {
+        if (resolved[i].primaryTime!.name !== firstPrimary) {
+          errors.push(
+            makeError({
+              code: "incompatible_metrics",
+              message: `Metric "${resolved[i].ref.name}" has primary time "${resolved[i].primaryTime!.name}", but "${resolved[0].ref.name}" uses "${firstPrimary}"`,
+              span: resolved[i].ref.span,
+              help: "Multi-metric IMPACTING shorthand requires all metrics to share a primary time. Split into separate IMPACTING clauses.",
+            })
+          );
+        }
+      }
+    }
+
+    // Validate the OVER clause once per resolved metric so that
+    // dimension-existence checks fire against each metric's dataset.
+    for (const { primaryTime, dims } of resolved) {
+      validateOverClause(clause.over, primaryTime, dims, errors);
+    }
+  }
+}
+
+// ===== CHECK =====
+
+function validateCheck(
+  stmt: CheckStatement,
+  adapter: SemanticLayerAdapter,
+  errors: TrueSpeechError[]
+): void {
+  if (stmt.metrics.length === 0) return;
+
+  const allMetrics = adapter.listMetrics();
+  const resolved: {
+    ref: MetricRef;
+    dims: DimensionInfo[];
+    primaryTime: DimensionInfo | null;
+  }[] = [];
+
+  for (const metricRef of stmt.metrics) {
+    if (!allMetrics.find((m) => m.name === metricRef.name)) {
+      errors.push(
+        makeError({
+          code: "unknown_metric",
+          message: `Unknown metric "${metricRef.name}"`,
+          span: metricRef.span,
+          help:
+            allMetrics.length > 0
+              ? `Available metrics: ${allMetrics.map((m) => m.name).join(", ")}`
+              : undefined,
+        })
+      );
+      continue;
+    }
+    const dims = adapter.dimensionsForMetric(metricRef.name);
+    const primaryTime = adapter.primaryTimeForMetric(metricRef.name);
+    if (!primaryTime) {
+      errors.push(
+        makeError({
+          code: "missing_primary_time",
+          message: `Metric "${metricRef.name}" has no primary time dimension`,
+          span: metricRef.span,
+        })
+      );
+      continue;
+    }
+    resolved.push({ ref: metricRef, dims, primaryTime });
+  }
+
+  if (resolved.length === 0) return;
+
+  if (resolved.length > 1) {
+    const firstPrimary = resolved[0].primaryTime!.name;
+    for (let i = 1; i < resolved.length; i++) {
+      if (resolved[i].primaryTime!.name !== firstPrimary) {
+        errors.push(
+          makeError({
+            code: "incompatible_metrics",
+            message: `Metric "${resolved[i].ref.name}" has primary time "${resolved[i].primaryTime!.name}", but "${resolved[0].ref.name}" uses "${firstPrimary}"`,
+            span: resolved[i].ref.span,
+            help: "Multi-metric CHECK requires all metrics to share a primary time.",
+          })
+        );
+      }
+    }
+  }
+
+  for (const { primaryTime, dims } of resolved) {
+    validateOverClause(stmt.over, primaryTime, dims, errors);
   }
 }
 

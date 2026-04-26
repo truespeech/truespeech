@@ -77,14 +77,16 @@ export function tokenize(source: string): Token[] {
       continue;
     }
 
-    // String literal
-    if (ch === "'") {
+    // String literal — single or double quoted. The quoting style is
+    // preserved in the token text; the parser strips it. Single quotes
+    // are common for short categorical values ('northeast'); double
+    // quotes are common for long prose like REGISTER descriptions.
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
       const start = pos;
       pos++; // opening quote
-      while (pos < source.length && source[pos] !== "'") pos++;
+      while (pos < source.length && source[pos] !== quote) pos++;
       if (pos >= source.length) {
-        // Unterminated — emit an error token covering everything from
-        // the opening quote onward.
         tokens.push({
           kind: "error",
           text: source.slice(start, pos),

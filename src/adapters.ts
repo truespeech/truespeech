@@ -1,14 +1,15 @@
 // Adapter interfaces.
 //
-// True Speech is decoupled from any specific semantic layer or database
-// via these two adapter contracts. The runtime calls into them — never
-// imports from a specific implementation — so the same runtime works
-// against OSI, dbt MetricFlow, Cube, an in-memory mock, or anything
-// else that can be wrapped to fit these shapes.
+// True Speech is decoupled from any specific semantic layer, database,
+// or lexicon storage via these three adapter contracts. The runtime
+// calls into them — never imports from a specific implementation — so
+// the same runtime works against OSI, dbt MetricFlow, Cube, an
+// in-memory mock, or anything else that can be wrapped to fit these
+// shapes.
 //
-// These types deliberately mirror the OSI runtime's public shapes so the
-// OsiAdapter wrapper is a near-identity. Future semantic-layer adapters
-// can do more translation work as needed.
+// The semantic-layer types deliberately mirror the OSI runtime's
+// public shapes so the OsiAdapter wrapper is a near-identity. Future
+// semantic-layer adapters can do more translation work as needed.
 
 // ===== Semantic layer =====
 
@@ -77,4 +78,57 @@ export interface QueryResult {
 
 export interface DatabaseAdapter {
   execute(sql: string): Promise<QueryResult>;
+}
+
+// ===== Lexicon =====
+//
+// The lexicon stores curated entries — typically annotations of known
+// data-quality issues, anomalies, or contextual notes that consumers of
+// the data should be aware of. Each entry has one or more "impacts": a
+// (metric, region) pair stating that this entry is relevant to that
+// metric within that region.
+//
+// Storage is left to the application: in-memory for a demo, a file or
+// database for persistence, etc. The runtime treats the lexicon as a
+// flat list — query/filter logic happens in the runtime itself.
+
+export interface LexiconEntry {
+  name: string;
+  impacts: Impact[];
+  description: string;
+}
+
+export interface Impact {
+  metric: string;
+  region: ResolvedRegion;
+}
+
+export interface ResolvedRegion {
+  // ISO YYYY-MM-DD, both ends inclusive (matches the closed-interval
+  // semantics of the language). The interval is in the calendar of the
+  // metric's primary time field.
+  timeStart: string;
+  timeEnd: string;
+  constraints: ResolvedConstraint[];
+}
+
+export interface ResolvedConstraint {
+  dimension: string;
+  operator: WhereOperator;
+  value: string | number | (string | number)[];
+}
+
+// A successful match between a query (CHECK or COMPUTE reconciliation)
+// and a lexicon entry. The `impact` is the specific IMPACTING clause
+// that matched; the `overlap` is the actual region intersection
+// computed at match time, useful for surfacing the *why*.
+export interface LexiconMatch {
+  entry: LexiconEntry;
+  impact: Impact;
+  overlap: ResolvedRegion;
+}
+
+export interface LexiconAdapter {
+  add(entry: LexiconEntry): Promise<void>;
+  list(): Promise<LexiconEntry[]>;
 }

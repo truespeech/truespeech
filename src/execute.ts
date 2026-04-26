@@ -13,7 +13,10 @@
 // sees what they wrote.
 
 import type {
+  Statement,
   ComputeStatement,
+  RegisterStatement,
+  CheckStatement,
   TimeRegion,
   TimeLiteral,
   Constraint,
@@ -24,6 +27,10 @@ import type {
 import type {
   SemanticLayerAdapter,
   DatabaseAdapter,
+  LexiconAdapter,
+  LexiconEntry,
+  LexiconMatch,
+  Impact,
   SemanticQuery,
   WhereClause,
   GroupByClause as OsiGroupBy,
@@ -32,19 +39,53 @@ import type {
   Grain,
   DimensionInfo,
 } from "./adapters.js";
+import { resolveRegion, intersectRegions } from "./region.js";
 
-export interface ExecuteResult {
+export interface ExecuteOpts {
+  semanticLayer: SemanticLayerAdapter;
+  database: DatabaseAdapter;
+  lexicon?: LexiconAdapter;
+}
+
+export type ExecuteResult = ComputeResult | RegisterResult | CheckResult;
+
+export interface ComputeResult {
   statement: "compute";
   semanticQuery: SemanticQuery;
   sql: string;
   results: QueryResult;
+  reconciliation: LexiconMatch[];
+}
+
+export interface RegisterResult {
+  statement: "register";
+  entry: LexiconEntry;
+}
+
+export interface CheckResult {
+  statement: "check";
+  matches: LexiconMatch[];
 }
 
 export async function execute(
-  stmt: ComputeStatement,
-  semanticLayer: SemanticLayerAdapter,
-  database: DatabaseAdapter
+  stmt: Statement,
+  opts: ExecuteOpts
 ): Promise<ExecuteResult> {
+  switch (stmt.kind) {
+    case "compute":
+      return executeCompute(stmt, opts);
+    case "register":
+      return executeRegister(stmt, opts);
+    case "check":
+      return executeCheck(stmt, opts);
+  }
+}
+
+async function executeCompute(
+  stmt: ComputeStatement,
+  opts: ExecuteOpts
+): Promise<ComputeResult> {
+  const { semanticLayer, database, lexicon } = opts;
   const metric = stmt.metrics[0];
   const primaryTime = semanticLayer.primaryTimeForMetric(metric.name);
 
@@ -121,12 +162,117 @@ export async function execute(
   // 5. Apply the rename map to column headers
   const results = applyRename(rawResults, renameMap);
 
+  // 6. Reconciliation against the lexicon (no-op if no lexicon configured).
+  const reconciliation = lexicon
+    ? await reconcile(metric.name, primaryTime, stmt, lexicon)
+    : [];
+
   return {
     statement: "compute",
     semanticQuery,
     sql,
     results,
+    reconciliation,
   };
+}
+
+// ===== REGISTER =====
+
+async function executeRegister(
+  stmt: RegisterStatement,
+  opts: ExecuteOpts
+): Promise<RegisterResult> {
+  const { semanticLayer, lexicon } = opts;
+  if (!lexicon) {
+    throw new Error(
+      "REGISTER requires a lexicon adapter; none was configured"
+    );
+  }
+
+  // Expand multi-metric IMPACTING shorthand into one Impact per metric,
+  // resolving each region against the metric's primary time field.
+  const impacts: Impact[] = [];
+  for (const clause of stmt.impactClauses) {
+    for (const metricRef of clause.metrics) {
+      const primaryTime = semanticLayer.primaryTimeForMetric(metricRef.name);
+      if (!primaryTime) {
+        // Should have been caught by validate(); guard so the runtime
+        // never silently produces an entry that can never match.
+        throw new Error(
+          `Cannot register: metric "${metricRef.name}" has no primary time`
+        );
+      }
+      const region = resolveRegion(clause.over, primaryTime.name);
+      impacts.push({ metric: metricRef.name, region });
+    }
+  }
+
+  const entry: LexiconEntry = {
+    name: stmt.name.name,
+    impacts,
+    description: stmt.description.value,
+  };
+
+  await lexicon.add(entry);
+
+  return { statement: "register", entry };
+}
+
+// ===== CHECK =====
+
+async function executeCheck(
+  stmt: CheckStatement,
+  opts: ExecuteOpts
+): Promise<CheckResult> {
+  const { semanticLayer, lexicon } = opts;
+  if (!lexicon) {
+    throw new Error(
+      "CHECK requires a lexicon adapter; none was configured"
+    );
+  }
+
+  const entries = await lexicon.list();
+  const matches: LexiconMatch[] = [];
+
+  for (const metricRef of stmt.metrics) {
+    const primaryTime = semanticLayer.primaryTimeForMetric(metricRef.name);
+    if (!primaryTime) continue; // validation should have flagged
+    const queryRegion = resolveRegion(stmt.over, primaryTime.name);
+
+    for (const entry of entries) {
+      for (const impact of entry.impacts) {
+        if (impact.metric !== metricRef.name) continue;
+        const overlap = intersectRegions(queryRegion, impact.region);
+        if (!overlap) continue;
+        matches.push({ entry, impact, overlap });
+      }
+    }
+  }
+
+  return { statement: "check", matches };
+}
+
+// ===== Reconciliation (used by COMPUTE) =====
+
+async function reconcile(
+  metric: string,
+  primaryTime: DimensionInfo | null,
+  stmt: ComputeStatement,
+  lexicon: LexiconAdapter
+): Promise<LexiconMatch[]> {
+  if (!primaryTime) return [];
+  const entries = await lexicon.list();
+  const queryRegion = resolveRegion(stmt.over, primaryTime.name);
+  const matches: LexiconMatch[] = [];
+  for (const entry of entries) {
+    for (const impact of entry.impacts) {
+      if (impact.metric !== metric) continue;
+      const overlap = intersectRegions(queryRegion, impact.region);
+      if (!overlap) continue;
+      matches.push({ entry, impact, overlap });
+    }
+  }
+  return matches;
 }
 
 // ===== Time region → WHERE clauses =====

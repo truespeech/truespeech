@@ -45,3 +45,31 @@ export interface QueryResult {
 export interface DatabaseAdapter {
     execute(sql: string): Promise<QueryResult>;
 }
+export interface LexiconEntry {
+    name: string;
+    impacts: Impact[];
+    description: string;
+}
+export interface Impact {
+    metric: string;
+    region: ResolvedRegion;
+}
+export interface ResolvedRegion {
+    timeStart: string;
+    timeEnd: string;
+    constraints: ResolvedConstraint[];
+}
+export interface ResolvedConstraint {
+    dimension: string;
+    operator: WhereOperator;
+    value: string | number | (string | number)[];
+}
+export interface LexiconMatch {
+    entry: LexiconEntry;
+    impact: Impact;
+    overlap: ResolvedRegion;
+}
+export interface LexiconAdapter {
+    add(entry: LexiconEntry): Promise<void>;
+    list(): Promise<LexiconEntry[]>;
+}

@@ -1,5 +1,5 @@
 import type { Span } from "./source.js";
-export type Statement = ComputeStatement;
+export type Statement = ComputeStatement | RegisterStatement | CheckStatement;
 export interface ComputeStatement {
     kind: "compute";
     metrics: MetricRef[];
@@ -7,6 +7,29 @@ export interface ComputeStatement {
     groupBy?: GroupByClause[];
     orderBy?: OrderByClause[];
     limit?: NumberLiteral;
+    span: Span;
+}
+export interface RegisterStatement {
+    kind: "register";
+    name: Identifier;
+    impactClauses: ImpactClause[];
+    description: StringLiteral;
+    span: Span;
+}
+export interface ImpactClause {
+    metrics: MetricRef[];
+    over: OverClause;
+    span: Span;
+}
+export interface CheckStatement {
+    kind: "check";
+    metrics: MetricRef[];
+    over: OverClause;
+    span: Span;
+}
+export interface StringLiteral {
+    value: string;
+    text: string;
     span: Span;
 }
 export interface MetricRef {

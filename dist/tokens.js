@@ -18,6 +18,10 @@ export const KEYWORDS = new Set([
     "not",
     "asc",
     "desc",
+    "register",
+    "check",
+    "impacting",
+    "with",
 ]);
 export const GRAINS = new Set([
     "day",

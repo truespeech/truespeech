@@ -65,6 +65,10 @@ describe("tokenize — keywords, grains, time-keywords", () => {
       "not",
       "asc",
       "desc",
+      "register",
+      "check",
+      "impacting",
+      "with",
     ];
     for (const w of words) {
       const t = noEof(tokenize(w));
@@ -164,6 +168,29 @@ describe("tokenize — strings", () => {
     const t = noEof(tokenize("'no end"));
     assert.deepEqual(kinds(t), ["error"]);
     assert.equal(t[0].text, "'no end");
+  });
+
+  it("tokenizes double-quoted string", () => {
+    const t = noEof(tokenize('"northeast"'));
+    assert.deepEqual(kinds(t), ["string"]);
+    assert.equal(t[0].text, '"northeast"');
+  });
+
+  it("preserves single quote inside double-quoted string", () => {
+    const t = noEof(tokenize(`"user's session"`));
+    assert.deepEqual(kinds(t), ["string"]);
+    assert.equal(t[0].text, `"user's session"`);
+  });
+
+  it("emits an error token for an unterminated double-quoted string", () => {
+    const t = noEof(tokenize('"no end'));
+    assert.deepEqual(kinds(t), ["error"]);
+  });
+
+  it("treats opening quote style as terminator (single does not close double)", () => {
+    const t = noEof(tokenize(`"abc' def"`));
+    assert.deepEqual(kinds(t), ["string"]);
+    assert.equal(t[0].text, `"abc' def"`);
   });
 });
 

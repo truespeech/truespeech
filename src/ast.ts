@@ -13,7 +13,7 @@ import type { Span } from "./source.js";
 
 // ===== Top-level =====
 
-export type Statement = ComputeStatement;
+export type Statement = ComputeStatement | RegisterStatement | CheckStatement;
 
 export interface ComputeStatement {
   kind: "compute";
@@ -22,6 +22,45 @@ export interface ComputeStatement {
   groupBy?: GroupByClause[];
   orderBy?: OrderByClause[];
   limit?: NumberLiteral;
+  span: Span;
+}
+
+// REGISTER <name> IMPACTING <metric>[, <metric>...] OVER <region>
+//                 [IMPACTING ... OVER ...]...
+//                 WITH <description-string>
+//
+// Each ImpactClause may carry multiple metrics (the multi-metric
+// shorthand) — the validator enforces that those metrics share a
+// primary time dimension. The parser stores the raw structure;
+// expansion to per-metric Impacts happens at execute time.
+export interface RegisterStatement {
+  kind: "register";
+  name: Identifier;
+  impactClauses: ImpactClause[];
+  description: StringLiteral;
+  span: Span;
+}
+
+export interface ImpactClause {
+  metrics: MetricRef[];
+  over: OverClause;
+  span: Span;
+}
+
+// CHECK <metric>[, <metric>...] OVER <region>
+//
+// Always requires OVER (use `OVER all time` for unbounded). Multi-
+// metric form requires shared primary time, same rule as COMPUTE.
+export interface CheckStatement {
+  kind: "check";
+  metrics: MetricRef[];
+  over: OverClause;
+  span: Span;
+}
+
+export interface StringLiteral {
+  value: string; // unquoted
+  text: string; // including quotes (' or ")
   span: Span;
 }
 

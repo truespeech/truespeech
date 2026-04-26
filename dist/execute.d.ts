@@ -1,9 +1,24 @@
-import type { ComputeStatement } from "./ast.js";
-import type { SemanticLayerAdapter, DatabaseAdapter, SemanticQuery, QueryResult } from "./adapters.js";
-export interface ExecuteResult {
+import type { Statement } from "./ast.js";
+import type { SemanticLayerAdapter, DatabaseAdapter, LexiconAdapter, LexiconEntry, LexiconMatch, SemanticQuery, QueryResult } from "./adapters.js";
+export interface ExecuteOpts {
+    semanticLayer: SemanticLayerAdapter;
+    database: DatabaseAdapter;
+    lexicon?: LexiconAdapter;
+}
+export type ExecuteResult = ComputeResult | RegisterResult | CheckResult;
+export interface ComputeResult {
     statement: "compute";
     semanticQuery: SemanticQuery;
     sql: string;
     results: QueryResult;
+    reconciliation: LexiconMatch[];
 }
-export declare function execute(stmt: ComputeStatement, semanticLayer: SemanticLayerAdapter, database: DatabaseAdapter): Promise<ExecuteResult>;
+export interface RegisterResult {
+    statement: "register";
+    entry: LexiconEntry;
+}
+export interface CheckResult {
+    statement: "check";
+    matches: LexiconMatch[];
+}
+export declare function execute(stmt: Statement, opts: ExecuteOpts): Promise<ExecuteResult>;

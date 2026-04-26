@@ -13,6 +13,8 @@
 import type {
   SemanticLayerAdapter,
   DatabaseAdapter,
+  LexiconAdapter,
+  LexiconEntry,
   MetricInfo,
   DimensionInfo,
   SemanticQuery,
@@ -71,6 +73,21 @@ export function mockDatabase(
       executed.push(sql);
       return result;
     },
+  };
+}
+
+export interface MockLexicon extends LexiconAdapter {
+  readonly entries: LexiconEntry[];
+}
+
+export function mockLexicon(seed: LexiconEntry[] = []): MockLexicon {
+  const entries: LexiconEntry[] = [...seed];
+  return {
+    entries,
+    add: async (entry: LexiconEntry) => {
+      entries.push(entry);
+    },
+    list: async () => entries,
   };
 }
 

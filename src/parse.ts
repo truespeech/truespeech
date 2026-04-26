@@ -11,6 +11,10 @@
 import type {
   Statement,
   ComputeStatement,
+  RegisterStatement,
+  CheckStatement,
+  ImpactClause,
+  StringLiteral,
   MetricRef,
   OverClause,
   TimeRegion,
@@ -146,6 +150,12 @@ class Parser {
     if (this.check("keyword", "compute")) {
       return this.parseCompute();
     }
+    if (this.check("keyword", "register")) {
+      return this.parseRegister();
+    }
+    if (this.check("keyword", "check")) {
+      return this.parseCheck();
+    }
     if (this.isAtEnd()) {
       this.errorHere("unexpected_eof", "Empty input — expected a statement");
       return null;
@@ -154,8 +164,7 @@ class Parser {
     this.errorAt(
       tok.span,
       "unexpected_token",
-      `Expected statement keyword (COMPUTE), got "${tok.text}"`,
-      "Phase 1 supports COMPUTE statements only"
+      `Expected COMPUTE, REGISTER, or CHECK, got "${tok.text}"`
     );
     return null;
   }
@@ -242,6 +251,161 @@ class Parser {
       orderBy,
       limit,
       span: spanFrom(computeTok.span, lastTok.span ?? computeTok.span),
+    };
+  }
+
+  // ===== REGISTER =====
+
+  parseRegister(): RegisterStatement | null {
+    const registerTok = this.advance(); // REGISTER
+
+    const nameTok = this.expect(
+      "identifier",
+      undefined,
+      "expected_token",
+      "Expected an entry name (identifier) after REGISTER"
+    );
+    if (!nameTok) return null;
+    const name: Identifier = { name: nameTok.text, span: nameTok.span };
+
+    // At least one IMPACTING clause is required.
+    if (!this.check("keyword", "impacting")) {
+      this.errorHere(
+        "expected_token",
+        "Expected IMPACTING after entry name",
+        "REGISTER must include at least one IMPACTING clause"
+      );
+      return null;
+    }
+
+    const impactClauses: ImpactClause[] = [];
+    while (this.check("keyword", "impacting")) {
+      const clause = this.parseImpactClause();
+      if (!clause) return null;
+      impactClauses.push(clause);
+    }
+
+    if (
+      !this.expect(
+        "keyword",
+        "with",
+        "expected_token",
+        "Expected WITH after IMPACTING clauses",
+        "REGISTER requires a WITH <description> clause"
+      )
+    ) {
+      return null;
+    }
+
+    const description = this.parseStringLiteral();
+    if (!description) return null;
+
+    this.matchPunct(";"); // optional terminator
+
+    if (!this.isAtEnd()) {
+      const tok = this.peek();
+      this.errorAt(
+        tok.span,
+        "unexpected_token",
+        `Unexpected token "${tok.text}" after end of statement`
+      );
+    }
+
+    const lastTok = this.tokens[Math.max(0, this.pos - 1)];
+    return {
+      kind: "register",
+      name,
+      impactClauses,
+      description,
+      span: spanFrom(registerTok.span, lastTok.span ?? registerTok.span),
+    };
+  }
+
+  parseImpactClause(): ImpactClause | null {
+    const impactingTok = this.advance(); // IMPACTING
+    const metrics = this.parseMetricList();
+    if (metrics.length === 0) {
+      this.errorAt(
+        impactingTok.span,
+        "expected_token",
+        "Expected at least one metric after IMPACTING"
+      );
+      return null;
+    }
+
+    if (!this.matchKeyword("over")) {
+      this.errorHere(
+        "expected_token",
+        "Expected OVER after metric list in IMPACTING clause"
+      );
+      return null;
+    }
+
+    const over = this.parseOverClause();
+    if (!over) return null;
+
+    return {
+      metrics,
+      over,
+      span: spanFrom(impactingTok.span, over.span),
+    };
+  }
+
+  parseStringLiteral(): StringLiteral | null {
+    const tok = this.peek();
+    if (tok.kind !== "string") {
+      this.errorAt(
+        tok.span,
+        "expected_token",
+        `Expected a string literal, got "${tok.text}"`
+      );
+      return null;
+    }
+    this.advance();
+    return {
+      value: tok.text.slice(1, -1),
+      text: tok.text,
+      span: tok.span,
+    };
+  }
+
+  // ===== CHECK =====
+
+  parseCheck(): CheckStatement | null {
+    const checkTok = this.advance(); // CHECK
+
+    const metrics = this.parseMetricList();
+    if (metrics.length === 0) return null;
+
+    if (!this.matchKeyword("over")) {
+      this.errorHere(
+        "expected_token",
+        "Expected OVER after metric list",
+        "CHECK requires an OVER clause — use 'OVER all time' for the unbounded case"
+      );
+      return null;
+    }
+
+    const over = this.parseOverClause();
+    if (!over) return null;
+
+    this.matchPunct(";");
+
+    if (!this.isAtEnd()) {
+      const tok = this.peek();
+      this.errorAt(
+        tok.span,
+        "unexpected_token",
+        `Unexpected token "${tok.text}" after end of statement`
+      );
+    }
+
+    const lastTok = this.tokens[Math.max(0, this.pos - 1)];
+    return {
+      kind: "check",
+      metrics,
+      over,
+      span: spanFrom(checkTok.span, lastTok.span ?? checkTok.span),
     };
   }
 

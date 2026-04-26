@@ -12,6 +12,7 @@ import { execute as executeAst } from "./execute.js";
 import { TrueSpeechExecutionError } from "./errors.js";
 export { TrueSpeechExecutionError, renderError, renderErrors, } from "./errors.js";
 export { resultColumnNames } from "./validate.js";
+export { resolveRegion, intersectRegions, renderRegion, renderTimeRegion, } from "./region.js";
 export { osiAdapter } from "./osi-adapter.js";
 export class TrueSpeech {
     opts;
@@ -54,16 +55,11 @@ export class TrueSpeech {
         if (validateErrors.length > 0) {
             throw new TrueSpeechExecutionError(validateErrors);
         }
-        if (ast.kind !== "compute") {
-            throw new TrueSpeechExecutionError([
-                {
-                    code: "unexpected_token",
-                    message: `Statement kind "${ast.kind}" not yet supported`,
-                    span: ast.span,
-                },
-            ]);
-        }
-        return executeAst(ast, this.opts.semanticLayer, this.opts.database);
+        return executeAst(ast, {
+            semanticLayer: this.opts.semanticLayer,
+            database: this.opts.database,
+            lexicon: this.opts.lexicon,
+        });
     }
 }
 export const VERSION = "0.1.0";
