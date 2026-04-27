@@ -106,6 +106,7 @@ export {
   intersectRegions,
   renderRegion,
   renderTimeRegion,
+  formatTimeBucket,
 } from "./region.js";
 
 export { osiAdapter } from "./osi-adapter.js";

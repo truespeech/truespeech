@@ -1,9 +1,10 @@
-import type { OverClause, TimeLiteral } from "./ast.js";
+import type { OverClause, TimeLiteral, Grain } from "./ast.js";
 import type { ResolvedRegion } from "./adapters.js";
 export declare function resolveRegion(over: OverClause, primaryTimeField: string | null): ResolvedRegion;
 export declare function intersectRegions(a: ResolvedRegion, b: ResolvedRegion): ResolvedRegion | null;
 export declare function renderTimeRegion(start: string, end: string): string;
 export declare function renderRegion(region: ResolvedRegion): string;
+export declare function formatTimeBucket(isoStart: string, grain: Grain): string;
 export declare function firstDayOf(lit: TimeLiteral): string;
 export declare function lastDayOf(lit: TimeLiteral): string;
 export declare function pad2(n: number): string;

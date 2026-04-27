@@ -12,7 +12,7 @@ import { execute as executeAst } from "./execute.js";
 import { TrueSpeechExecutionError } from "./errors.js";
 export { TrueSpeechExecutionError, renderError, renderErrors, } from "./errors.js";
 export { resultColumnNames } from "./validate.js";
-export { resolveRegion, intersectRegions, renderRegion, renderTimeRegion, } from "./region.js";
+export { resolveRegion, intersectRegions, renderRegion, renderTimeRegion, formatTimeBucket, } from "./region.js";
 export { osiAdapter } from "./osi-adapter.js";
 export class TrueSpeech {
     opts;

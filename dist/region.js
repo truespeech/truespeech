@@ -149,6 +149,39 @@ export function renderRegion(region) {
         return time;
     return [time, ...region.constraints.map(renderConstraint)].join(" AND ");
 }
+// Format a time-grain bucket (a single ISO date marking the start of the
+// bucket) at the same calendar resolution renderTimeRegion uses. Synthesizes
+// the bucket's end from the grain and delegates — so a "month" bucket
+// starting 2026-01-01 renders as "2026-01", a "year" bucket starting
+// 2026-01-01 as "2026", and a "week" bucket falls through to the
+// "2026-01-05 to 2026-01-11" form (week starts don't align with calendar
+// units larger than a day).
+export function formatTimeBucket(isoStart, grain) {
+    return renderTimeRegion(isoStart, endOfBucket(isoStart, grain));
+}
+function endOfBucket(isoStart, grain) {
+    const y = year(isoStart);
+    const m = month(isoStart);
+    const d = day(isoStart);
+    switch (grain) {
+        case "day":
+            return isoStart;
+        case "week": {
+            // start + 6 days, using UTC Date arithmetic so month/year crossings
+            // are handled correctly without DST surprises.
+            const date = new Date(Date.UTC(y, m - 1, d + 6));
+            return iso(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+        }
+        case "month":
+            return iso(y, m, daysInMonth(y, m));
+        case "quarter": {
+            const lastMonth = m + 2;
+            return iso(y, lastMonth, daysInMonth(y, lastMonth));
+        }
+        case "year":
+            return iso(y, 12, 31);
+    }
+}
 function renderConstraint(c) {
     if (c.operator === "in" || c.operator === "not_in") {
         const op = c.operator === "in" ? "IN" : "NOT IN";

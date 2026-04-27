@@ -5,6 +5,7 @@ import {
   intersectRegions,
   renderTimeRegion,
   renderRegion,
+  formatTimeBucket,
 } from "../src/region.js";
 import { tokenize } from "../src/tokenize.js";
 import { parse } from "../src/parse.js";
@@ -343,5 +344,58 @@ describe("renderRegion", () => {
       ),
       "2026 AND amount > 100"
     );
+  });
+});
+
+describe("formatTimeBucket", () => {
+  it("formats year buckets as YYYY", () => {
+    assert.equal(formatTimeBucket("2026-01-01", "year"), "2026");
+  });
+
+  it("formats quarter buckets as YYYY-QN", () => {
+    assert.equal(formatTimeBucket("2026-01-01", "quarter"), "2026-Q1");
+    assert.equal(formatTimeBucket("2026-04-01", "quarter"), "2026-Q2");
+    assert.equal(formatTimeBucket("2026-07-01", "quarter"), "2026-Q3");
+    assert.equal(formatTimeBucket("2026-10-01", "quarter"), "2026-Q4");
+  });
+
+  it("formats month buckets as YYYY-MM", () => {
+    assert.equal(formatTimeBucket("2026-01-01", "month"), "2026-01");
+    assert.equal(formatTimeBucket("2026-12-01", "month"), "2026-12");
+  });
+
+  it("formats day buckets as YYYY-MM-DD", () => {
+    assert.equal(formatTimeBucket("2026-02-15", "day"), "2026-02-15");
+  });
+
+  it("formats week buckets as a date range", () => {
+    // A week starts on the bucket date and runs 6 days; weeks rarely
+    // align with calendar boundaries, so the range form is expected.
+    assert.equal(
+      formatTimeBucket("2026-01-05", "week"),
+      "2026-01-05 to 2026-01-11"
+    );
+  });
+
+  it("handles week buckets that cross a month boundary", () => {
+    assert.equal(
+      formatTimeBucket("2026-01-29", "week"),
+      "2026-01-29 to 2026-02-04"
+    );
+  });
+
+  it("handles week buckets that cross a year boundary", () => {
+    assert.equal(
+      formatTimeBucket("2025-12-29", "week"),
+      "2025-12-29 to 2026-01-04"
+    );
+  });
+
+  it("handles February correctly in non-leap years", () => {
+    assert.equal(formatTimeBucket("2026-02-01", "month"), "2026-02");
+  });
+
+  it("handles February correctly in leap years", () => {
+    assert.equal(formatTimeBucket("2024-02-01", "month"), "2024-02");
   });
 });

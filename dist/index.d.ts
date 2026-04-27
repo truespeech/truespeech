@@ -11,7 +11,7 @@ export type { TrueSpeechError, ErrorCode, RelatedSpan, } from "./errors.js";
 export type { ExecuteResult, ExecuteOpts, ComputeResult, RegisterResult, CheckResult, } from "./execute.js";
 export { TrueSpeechExecutionError, renderError, renderErrors, } from "./errors.js";
 export { resultColumnNames } from "./validate.js";
-export { resolveRegion, intersectRegions, renderRegion, renderTimeRegion, } from "./region.js";
+export { resolveRegion, intersectRegions, renderRegion, renderTimeRegion, formatTimeBucket, } from "./region.js";
 export { osiAdapter } from "./osi-adapter.js";
 export type { OsiLikeRuntime } from "./osi-adapter.js";
 export interface TrueSpeechOptions {
