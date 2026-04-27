@@ -374,3 +374,36 @@ describe("execute COMPUTE — reconciliation", () => {
     assert.deepEqual(result.reconciliation, []);
   });
 });
+
+// ===========================================================================
+// COMPUTE — region field
+// ===========================================================================
+
+describe("execute COMPUTE — region field", () => {
+  it("exposes the resolved OVER region on the result", async () => {
+    const result = (await execute(ast(`COMPUTE total_sales OVER 2026-02`), {
+      semanticLayer: retailSalesMock(),
+      database: mockDatabase(),
+    })) as ComputeResult;
+
+    assert.equal(result.region.timeStart, "2026-02-01");
+    assert.equal(result.region.timeEnd, "2026-02-28");
+    assert.deepEqual(result.region.constraints, []);
+  });
+
+  it("includes resolved categorical constraints from OVER", async () => {
+    const result = (await execute(
+      ast(`COMPUTE total_sales OVER 2026-Q1 AND region = 'northeast'`),
+      {
+        semanticLayer: retailSalesMock(),
+        database: mockDatabase(),
+      }
+    )) as ComputeResult;
+
+    assert.equal(result.region.timeStart, "2026-01-01");
+    assert.equal(result.region.timeEnd, "2026-03-31");
+    assert.deepEqual(result.region.constraints, [
+      { dimension: "region", operator: "=", value: "northeast" },
+    ]);
+  });
+});

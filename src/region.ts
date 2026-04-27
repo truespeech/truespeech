@@ -192,7 +192,11 @@ export function formatTimeBucket(isoStart: string, grain: Grain): string {
   return renderTimeRegion(isoStart, endOfBucket(isoStart, grain));
 }
 
-function endOfBucket(isoStart: string, grain: Grain): string {
+// Inverse of a bucket's start: given the ISO date that names the bucket
+// (a "month" bucket is named by its 1st-of-the-month, etc.), return the
+// last ISO date contained in that bucket. Useful for callers that need
+// a bucket's full time interval — e.g. per-row reconciliation matching.
+export function endOfBucket(isoStart: string, grain: Grain): string {
   const y = year(isoStart);
   const m = month(isoStart);
   const d = day(isoStart);

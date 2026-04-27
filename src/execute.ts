@@ -38,6 +38,7 @@ import type {
   QueryResult,
   Grain,
   DimensionInfo,
+  ResolvedRegion,
 } from "./adapters.js";
 import { resolveRegion, intersectRegions, firstDayOf, lastDayOf } from "./region.js";
 
@@ -55,6 +56,10 @@ export interface ComputeResult {
   sql: string;
   results: QueryResult;
   reconciliation: LexiconMatch[];
+  // The resolved OVER region the query addressed. Exposed so consumers
+  // can reason about which slice of the data each result row represents
+  // — e.g., per-row reconciliation matching in a UI.
+  region: ResolvedRegion;
 }
 
 export interface RegisterResult {
@@ -162,9 +167,13 @@ async function executeCompute(
   // 5. Apply the rename map to column headers
   const results = applyRename(rawResults, renameMap);
 
-  // 6. Reconciliation against the lexicon (no-op if no lexicon configured).
+  // 6. Resolve the OVER region once — used both for reconciliation and
+  // for the consumer-facing ComputeResult.region field.
+  const region = resolveRegion(stmt.over, primaryTime?.name ?? "");
+
+  // 7. Reconciliation against the lexicon (no-op if no lexicon configured).
   const reconciliation = lexicon
-    ? await reconcile(metric.name, primaryTime, stmt, lexicon)
+    ? await reconcile(metric.name, region, lexicon)
     : [];
 
   return {
@@ -173,6 +182,7 @@ async function executeCompute(
     sql,
     results,
     reconciliation,
+    region,
   };
 }
 
@@ -256,13 +266,10 @@ async function executeCheck(
 
 async function reconcile(
   metric: string,
-  primaryTime: DimensionInfo | null,
-  stmt: ComputeStatement,
+  queryRegion: ResolvedRegion,
   lexicon: LexiconAdapter
 ): Promise<LexiconMatch[]> {
-  if (!primaryTime) return [];
   const entries = await lexicon.list();
-  const queryRegion = resolveRegion(stmt.over, primaryTime.name);
   const matches: LexiconMatch[] = [];
   for (const entry of entries) {
     for (const impact of entry.impacts) {

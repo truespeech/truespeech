@@ -94,9 +94,12 @@ async function executeCompute(stmt, opts) {
     const rawResults = await database.execute(sql);
     // 5. Apply the rename map to column headers
     const results = applyRename(rawResults, renameMap);
-    // 6. Reconciliation against the lexicon (no-op if no lexicon configured).
+    // 6. Resolve the OVER region once — used both for reconciliation and
+    // for the consumer-facing ComputeResult.region field.
+    const region = resolveRegion(stmt.over, primaryTime?.name ?? "");
+    // 7. Reconciliation against the lexicon (no-op if no lexicon configured).
     const reconciliation = lexicon
-        ? await reconcile(metric.name, primaryTime, stmt, lexicon)
+        ? await reconcile(metric.name, region, lexicon)
         : [];
     return {
         statement: "compute",
@@ -104,6 +107,7 @@ async function executeCompute(stmt, opts) {
         sql,
         results,
         reconciliation,
+        region,
     };
 }
 // ===== REGISTER =====
@@ -162,11 +166,8 @@ async function executeCheck(stmt, opts) {
     return { statement: "check", matches };
 }
 // ===== Reconciliation (used by COMPUTE) =====
-async function reconcile(metric, primaryTime, stmt, lexicon) {
-    if (!primaryTime)
-        return [];
+async function reconcile(metric, queryRegion, lexicon) {
     const entries = await lexicon.list();
-    const queryRegion = resolveRegion(stmt.over, primaryTime.name);
     const matches = [];
     for (const entry of entries) {
         for (const impact of entry.impacts) {

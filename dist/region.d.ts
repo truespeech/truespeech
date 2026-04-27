@@ -5,6 +5,7 @@ export declare function intersectRegions(a: ResolvedRegion, b: ResolvedRegion): 
 export declare function renderTimeRegion(start: string, end: string): string;
 export declare function renderRegion(region: ResolvedRegion): string;
 export declare function formatTimeBucket(isoStart: string, grain: Grain): string;
+export declare function endOfBucket(isoStart: string, grain: Grain): string;
 export declare function firstDayOf(lit: TimeLiteral): string;
 export declare function lastDayOf(lit: TimeLiteral): string;
 export declare function pad2(n: number): string;

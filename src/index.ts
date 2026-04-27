@@ -107,6 +107,7 @@ export {
   renderRegion,
   renderTimeRegion,
   formatTimeBucket,
+  endOfBucket,
 } from "./region.js";
 
 export { osiAdapter } from "./osi-adapter.js";
