@@ -259,11 +259,28 @@ class Parser {
   parseRegister(): RegisterStatement | null {
     const registerTok = this.advance(); // REGISTER
 
+    // Entry kind — currently only "region", but required at parse time
+    // so adding new kinds (e.g. "boundary") later is non-breaking. Soft
+    // keyword: "region" is also a valid identifier (it's a common
+    // dimension name) so we match it as text rather than tokenizing it
+    // as a reserved word.
+    if (
+      !this.expect(
+        "identifier",
+        "region",
+        "expected_token",
+        'Expected entry kind "region" after REGISTER',
+        "REGISTER takes an entry kind followed by the entry name; only `region` is currently defined"
+      )
+    ) {
+      return null;
+    }
+
     const nameTok = this.expect(
       "identifier",
       undefined,
       "expected_token",
-      "Expected an entry name (identifier) after REGISTER"
+      "Expected an entry name (identifier) after REGISTER region"
     );
     if (!nameTok) return null;
     const name: Identifier = { name: nameTok.text, span: nameTok.span };
@@ -314,6 +331,7 @@ class Parser {
     const lastTok = this.tokens[Math.max(0, this.pos - 1)];
     return {
       kind: "register",
+      entryKind: "region",
       name,
       impactClauses,
       description,

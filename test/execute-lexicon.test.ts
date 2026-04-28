@@ -34,7 +34,7 @@ describe("execute REGISTER", () => {
 
     const result = (await execute(
       ast(
-        `REGISTER bot IMPACTING total_sales OVER 2026-02-03 to 2026-02-04 WITH "bot attack"`
+        `REGISTER region bot IMPACTING total_sales OVER 2026-02-03 to 2026-02-04 WITH "bot attack"`
       ),
       { semanticLayer, database, lexicon }
     )) as RegisterResult;
@@ -55,7 +55,7 @@ describe("execute REGISTER", () => {
     const lexicon = mockLexicon();
     const result = (await execute(
       ast(
-        `REGISTER bot IMPACTING total_sales, average_order_value OVER 2026-02 WITH "x"`
+        `REGISTER region bot IMPACTING total_sales, average_order_value OVER 2026-02 WITH "x"`
       ),
       {
         semanticLayer: retailSalesMock(),
@@ -73,7 +73,7 @@ describe("execute REGISTER", () => {
     const lexicon = mockLexicon();
     const result = (await execute(
       ast(
-        `REGISTER bot
+        `REGISTER region bot
            IMPACTING total_sales        OVER 2026-02-03 to 2026-02-04
            IMPACTING average_order_value OVER 2026-02-05 to 2026-02-07
            WITH "x"`
@@ -94,7 +94,7 @@ describe("execute REGISTER", () => {
     const lexicon = mockLexicon();
     const result = (await execute(
       ast(
-        `REGISTER bot IMPACTING total_sales OVER 2026-02 AND region = 'northeast' WITH "x"`
+        `REGISTER region bot IMPACTING total_sales OVER 2026-02 AND region = 'northeast' WITH "x"`
       ),
       {
         semanticLayer: retailSalesMock(),
@@ -113,7 +113,7 @@ describe("execute REGISTER", () => {
       () =>
         execute(
           ast(
-            `REGISTER bot IMPACTING total_sales OVER 2026 WITH "x"`
+            `REGISTER region bot IMPACTING total_sales OVER 2026 WITH "x"`
           ),
           {
             semanticLayer: retailSalesMock(),

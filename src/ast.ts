@@ -35,6 +35,12 @@ export interface ComputeStatement {
 // expansion to per-metric Impacts happens at execute time.
 export interface RegisterStatement {
   kind: "register";
+  // The lexicon entry kind being registered. Currently only "region";
+  // future work will add other shapes (e.g. "boundary" for cuts that
+  // partition the dimensional space rather than patches within it).
+  // Made explicit at parse time so the language can grow without a
+  // retroactive break.
+  entryKind: "region";
   name: Identifier;
   impactClauses: ImpactClause[];
   description: StringLiteral;

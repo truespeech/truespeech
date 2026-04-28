@@ -31,7 +31,7 @@ function check(src: string): CheckStatement {
 describe("parse REGISTER — minimal", () => {
   it("parses single IMPACTING with single metric", () => {
     const ast = register(
-      `REGISTER bot_campaign IMPACTING order_count OVER 2026-02-03 to 2026-02-04 WITH "credential stuffing"`
+      `REGISTER region bot_campaign IMPACTING order_count OVER 2026-02-03 to 2026-02-04 WITH "credential stuffing"`
     );
     assert.equal(ast.name.name, "bot_campaign");
     assert.equal(ast.impactClauses.length, 1);
@@ -42,7 +42,7 @@ describe("parse REGISTER — minimal", () => {
 
   it("parses single IMPACTING with multiple metrics (shorthand)", () => {
     const ast = register(
-      `REGISTER bot_campaign IMPACTING order_count, session_starts OVER 2026-02-03 to 2026-02-04 WITH "x"`
+      `REGISTER region bot_campaign IMPACTING order_count, session_starts OVER 2026-02-03 to 2026-02-04 WITH "x"`
     );
     assert.equal(ast.impactClauses.length, 1);
     assert.equal(ast.impactClauses[0].metrics.length, 2);
@@ -51,7 +51,7 @@ describe("parse REGISTER — minimal", () => {
 
   it("parses multiple IMPACTING clauses", () => {
     const ast = register(
-      `REGISTER bot_campaign
+      `REGISTER region bot_campaign
          IMPACTING order_count OVER 2026-02-03 to 2026-02-04
          IMPACTING ship_count  OVER 2026-02-05 to 2026-02-07
          WITH "x"`
@@ -63,14 +63,14 @@ describe("parse REGISTER — minimal", () => {
 
   it("parses IMPACTING with categorical constraints", () => {
     const ast = register(
-      `REGISTER bot_campaign IMPACTING order_count OVER 2026-02 AND region = 'northeast' WITH "x"`
+      `REGISTER region bot_campaign IMPACTING order_count OVER 2026-02 AND region = 'northeast' WITH "x"`
     );
     assert.equal(ast.impactClauses[0].over.constraints.length, 1);
   });
 
   it("accepts double-quoted prose with apostrophes", () => {
     const ast = register(
-      `REGISTER mobile_bug IMPACTING session_starts OVER 2025-07 to 2025-12 WITH "user's mobile sessions weren't logged"`
+      `REGISTER region mobile_bug IMPACTING session_starts OVER 2025-07 to 2025-12 WITH "user's mobile sessions weren't logged"`
     );
     assert.equal(
       ast.description.value,
@@ -80,20 +80,20 @@ describe("parse REGISTER — minimal", () => {
 
   it("accepts single-quoted descriptions too", () => {
     const ast = register(
-      `REGISTER x IMPACTING order_count OVER 2026 WITH 'short note'`
+      `REGISTER region x IMPACTING order_count OVER 2026 WITH 'short note'`
     );
     assert.equal(ast.description.value, "short note");
   });
 
   it("accepts trailing semicolon", () => {
     register(
-      `REGISTER x IMPACTING order_count OVER 2026 WITH "x";`
+      `REGISTER region x IMPACTING order_count OVER 2026 WITH "x";`
     );
   });
 
   it("is case-insensitive on keywords", () => {
     register(
-      `register x impacting order_count over 2026 with "x"`
+      `register region x impacting order_count over 2026 with "x"`
     );
   });
 });
@@ -103,28 +103,42 @@ describe("parse REGISTER — minimal", () => {
 // ===========================================================================
 
 describe("parse REGISTER — errors", () => {
+  it("errors when entry kind is missing", () => {
+    const r = parseSrc(`REGISTER x IMPACTING order_count OVER 2026 WITH "x"`);
+    assert.ok(r.errors.length > 0);
+    assert.match(r.errors[0].message, /entry kind/i);
+  });
+
+  it("errors when entry kind is not 'region'", () => {
+    const r = parseSrc(
+      `REGISTER boundary x IMPACTING order_count OVER 2026 WITH "x"`
+    );
+    assert.ok(r.errors.length > 0);
+    assert.match(r.errors[0].message, /entry kind/i);
+  });
+
   it("errors when name is missing", () => {
     const r = parseSrc(`REGISTER IMPACTING order_count OVER 2026 WITH "x"`);
     assert.ok(r.errors.length > 0);
   });
 
   it("errors when no IMPACTING clause", () => {
-    const r = parseSrc(`REGISTER x WITH "x"`);
+    const r = parseSrc(`REGISTER region x WITH "x"`);
     assert.ok(r.errors.length > 0);
   });
 
   it("errors when IMPACTING is missing OVER", () => {
-    const r = parseSrc(`REGISTER x IMPACTING order_count WITH "x"`);
+    const r = parseSrc(`REGISTER region x IMPACTING order_count WITH "x"`);
     assert.ok(r.errors.length > 0);
   });
 
   it("errors when WITH is missing", () => {
-    const r = parseSrc(`REGISTER x IMPACTING order_count OVER 2026`);
+    const r = parseSrc(`REGISTER region x IMPACTING order_count OVER 2026`);
     assert.ok(r.errors.length > 0);
   });
 
   it("errors when description is not a string", () => {
-    const r = parseSrc(`REGISTER x IMPACTING order_count OVER 2026 WITH 42`);
+    const r = parseSrc(`REGISTER region x IMPACTING order_count OVER 2026 WITH 42`);
     assert.ok(r.errors.length > 0);
   });
 });

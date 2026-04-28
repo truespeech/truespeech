@@ -53,7 +53,7 @@ result.reconciliation;  // any lexicon entries that overlap this region
 
 // REGISTER — annotate the lexicon
 await ts.execute(`
-  REGISTER bot_campaign_2026_02
+  REGISTER region bot_campaign_2026_02
     IMPACTING total_sales, order_count OVER 2026-02-03 to 2026-02-04
     WITH "Credential-stuffing campaign inflated session and order counts"
 `);
@@ -129,20 +129,22 @@ The lexicon is a curated store of contextual knowledge about the data: known ano
 ### REGISTER
 
 ```
-REGISTER <name>
+REGISTER <kind> <name>
   IMPACTING <metric>[, <metric>...] OVER <region>
   [IMPACTING <metric>[, <metric>...] OVER <region>]...
   WITH "<description>"
 ```
 
+`<kind>` is the shape of lexicon entry being registered. Currently the only defined kind is `region` — a patch in the dimensional space (a time interval plus optional categorical constraints) over which one or more metrics are affected. The kind is required at parse time so future additions (e.g. `boundary` for a cut that partitions the space into before-and-after) slot in without a retroactive break.
+
 Each `IMPACTING` clause carries one or more affected metrics and the region (relative to *that* metric's primary time) over which they're affected. The multi-metric shorthand requires the listed metrics to share a primary time; if they don't, write a separate `IMPACTING` clause per metric.
 
 ```
-REGISTER bot_campaign_2026_02
+REGISTER region bot_campaign_2026_02
   IMPACTING order_count, session_starts OVER 2026-02-03 to 2026-02-04
   WITH "Credential-stuffing campaign inflated session and order counts"
 
-REGISTER mobile_event_drop
+REGISTER region mobile_event_drop
   IMPACTING session_starts OVER 2025-07 to 2025-12
   IMPACTING ship_count     OVER 2025-08 to 2026-01
   WITH "Mobile app analytics events were not consistently fired"

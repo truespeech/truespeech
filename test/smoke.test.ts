@@ -137,7 +137,7 @@ describe("TrueSpeech — lexicon end-to-end", () => {
     const { ts, lexicon } = build();
 
     const reg = (await ts.execute(
-      `REGISTER bot IMPACTING total_sales OVER 2026-02-03 to 2026-02-04 WITH "credential stuffing"`
+      `REGISTER region bot IMPACTING total_sales OVER 2026-02-03 to 2026-02-04 WITH "credential stuffing"`
     )) as RegisterResult;
     assert.equal(reg.statement, "register");
     assert.equal(lexicon.entries.length, 1);
@@ -154,7 +154,7 @@ describe("TrueSpeech — lexicon end-to-end", () => {
   it("REGISTER → COMPUTE surfaces overlap in result.reconciliation", async () => {
     const { ts } = build();
     await ts.execute(
-      `REGISTER mobile_bug IMPACTING total_sales OVER 2025-07 to 2025-12 WITH "events undercounted"`
+      `REGISTER region mobile_bug IMPACTING total_sales OVER 2025-07 to 2025-12 WITH "events undercounted"`
     );
 
     const c = (await ts.execute(
@@ -169,7 +169,7 @@ describe("TrueSpeech — lexicon end-to-end", () => {
   it("non-overlapping COMPUTE returns empty reconciliation", async () => {
     const { ts } = build();
     await ts.execute(
-      `REGISTER bot IMPACTING total_sales OVER 2026-02-03 to 2026-02-04 WITH "x"`
+      `REGISTER region bot IMPACTING total_sales OVER 2026-02-03 to 2026-02-04 WITH "x"`
     );
     const c = (await ts.execute(
       `COMPUTE total_sales OVER 2026-03`
@@ -177,7 +177,7 @@ describe("TrueSpeech — lexicon end-to-end", () => {
     assert.deepEqual(c.reconciliation, []);
   });
 
-  it("REGISTER without lexicon throws on execute()", async () => {
+  it("REGISTER region without lexicon throws on execute()", async () => {
     const ts = new TrueSpeech({
       semanticLayer: retailSalesMock(),
       database: mockDatabase(),
@@ -185,7 +185,7 @@ describe("TrueSpeech — lexicon end-to-end", () => {
     await assert.rejects(
       () =>
         ts.execute(
-          `REGISTER bot IMPACTING total_sales OVER 2026 WITH "x"`
+          `REGISTER region bot IMPACTING total_sales OVER 2026 WITH "x"`
         ),
       /requires a lexicon adapter/
     );
@@ -194,7 +194,7 @@ describe("TrueSpeech — lexicon end-to-end", () => {
   it("renderRegion is exported and usable on a CHECK match", async () => {
     const { ts } = build();
     await ts.execute(
-      `REGISTER bot IMPACTING total_sales OVER 2026-Q1 WITH "x"`
+      `REGISTER region bot IMPACTING total_sales OVER 2026-Q1 WITH "x"`
     );
     const chk = (await ts.execute(
       `CHECK total_sales OVER 2026`

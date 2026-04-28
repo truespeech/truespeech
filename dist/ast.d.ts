@@ -11,6 +11,7 @@ export interface ComputeStatement {
 }
 export interface RegisterStatement {
     kind: "register";
+    entryKind: "region";
     name: Identifier;
     impactClauses: ImpactClause[];
     description: StringLiteral;

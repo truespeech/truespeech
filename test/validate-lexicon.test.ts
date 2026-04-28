@@ -66,14 +66,14 @@ function multiTimeMock() {
 describe("validate REGISTER — happy paths", () => {
   it("validates a single-impact entry", () => {
     const errors = parseAndValidate(
-      `REGISTER bot IMPACTING total_sales OVER 2026-02-03 to 2026-02-04 WITH "x"`
+      `REGISTER region bot IMPACTING total_sales OVER 2026-02-03 to 2026-02-04 WITH "x"`
     );
     assert.deepEqual(errors, []);
   });
 
   it("validates multi-IMPACTING with different per-metric regions", () => {
     const errors = parseAndValidate(
-      `REGISTER bot
+      `REGISTER region bot
          IMPACTING total_sales OVER 2026-02-03 to 2026-02-04
          IMPACTING order_count OVER 2026-02-03 to 2026-02-04
          WITH "x"`
@@ -83,7 +83,7 @@ describe("validate REGISTER — happy paths", () => {
 
   it("validates multi-metric IMPACTING shorthand when primary times match", () => {
     const errors = parseAndValidate(
-      `REGISTER bot
+      `REGISTER region bot
          IMPACTING total_sales, average_order_value OVER 2026-02
          WITH "x"`
     );
@@ -92,7 +92,7 @@ describe("validate REGISTER — happy paths", () => {
 
   it("validates with categorical constraints", () => {
     const errors = parseAndValidate(
-      `REGISTER bot
+      `REGISTER region bot
          IMPACTING total_sales OVER 2026-02 AND region = 'northeast'
          WITH "x"`
     );
@@ -107,7 +107,7 @@ describe("validate REGISTER — happy paths", () => {
 describe("validate REGISTER — errors", () => {
   it("flags unknown metric in IMPACTING", () => {
     const errors = parseAndValidate(
-      `REGISTER bot IMPACTING bogus OVER 2026 WITH "x"`
+      `REGISTER region bot IMPACTING bogus OVER 2026 WITH "x"`
     );
     assert.ok(findError(errors, "unknown_metric"));
   });
@@ -119,7 +119,7 @@ describe("validate REGISTER — errors", () => {
       primaryTimeByMetric: { snapshot: null },
     });
     const errors = parseAndValidate(
-      `REGISTER bot IMPACTING snapshot OVER 2026 WITH "x"`,
+      `REGISTER region bot IMPACTING snapshot OVER 2026 WITH "x"`,
       adapter
     );
     assert.ok(findError(errors, "missing_primary_time"));
@@ -127,7 +127,7 @@ describe("validate REGISTER — errors", () => {
 
   it("flags multi-metric shorthand with mismatched primary times", () => {
     const errors = parseAndValidate(
-      `REGISTER bot
+      `REGISTER region bot
          IMPACTING total_sales, ship_count OVER 2026-02
          WITH "x"`,
       multiTimeMock()
@@ -137,7 +137,7 @@ describe("validate REGISTER — errors", () => {
 
   it("permits multi-IMPACTING with different primaries (one metric per clause)", () => {
     const errors = parseAndValidate(
-      `REGISTER bot
+      `REGISTER region bot
          IMPACTING total_sales OVER 2026-02-03 to 2026-02-04
          IMPACTING ship_count  OVER 2026-02-05 to 2026-02-07
          WITH "x"`,
@@ -148,7 +148,7 @@ describe("validate REGISTER — errors", () => {
 
   it("flags unknown dimension in IMPACTING constraint", () => {
     const errors = parseAndValidate(
-      `REGISTER bot
+      `REGISTER region bot
          IMPACTING total_sales OVER 2026 AND bogus_dim = 'x'
          WITH "x"`
     );
@@ -157,7 +157,7 @@ describe("validate REGISTER — errors", () => {
 
   it("flags malformed time literal in IMPACTING region", () => {
     const errors = parseAndValidate(
-      `REGISTER bot IMPACTING total_sales OVER 2026-Q9 WITH "x"`
+      `REGISTER region bot IMPACTING total_sales OVER 2026-Q9 WITH "x"`
     );
     assert.ok(findError(errors, "malformed_time_literal"));
   });
