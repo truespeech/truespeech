@@ -4,7 +4,7 @@ In Ursula Le Guin's Earthsea, the True Speech is the language of wizards and dra
 
 **truespeech** is a technology for LLM-to-human communication that guarantees what the user sees is valid and accurate. It is a programming language in which an LLM expresses its claims, and a runtime that validates those claims against real data before rendering them into English. The result is communication that is deterministic, auditable, and provably correct.
 
-This repository contains the **True Speech runtime** — a small, browser-friendly TypeScript library that parses and executes True Speech statements against a configurable data stack.
+This repository contains the **truespeech runtime** — a small, browser-friendly TypeScript library that parses and executes truespeech statements against a configurable data stack.
 
 **[Try the interactive demos →](https://truespeech.io)**
 
@@ -16,7 +16,7 @@ Three statements are implemented: `COMPUTE` for querying, plus `REGISTER` and `C
 
 ```
                    ┌──────────────────────────┐
-   source code  →  │   True Speech runtime    │  →  result
+   source code  →  │    truespeech runtime    │  →  result
                    └──┬─────────┬─────────┬───┘
                       │         │         │
                   semantic-  database  lexicon
