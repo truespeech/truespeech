@@ -284,3 +284,72 @@ function quarterLabel(iso) {
 function monthLabel(iso) {
     return `${year(iso)}-${pad2(month(iso))}`;
 }
+export function buildRowRegion(row, groupBys, queryRegion) {
+    let timeStart = queryRegion.timeStart;
+    let timeEnd = queryRegion.timeEnd;
+    const dimValues = {};
+    // Inherit equality constraints from the query's OVER region — e.g.
+    // a top-level `AND region = 'west'` pins every row to that value.
+    for (const c of queryRegion.constraints) {
+        if (c.operator === "=" && !Array.isArray(c.value)) {
+            dimValues[c.dimension] = c.value;
+        }
+    }
+    for (let i = 0; i < groupBys.length; i++) {
+        const gb = groupBys[i];
+        const cell = row[i];
+        if (gb.grain && cell != null) {
+            const isoCell = String(cell).slice(0, 10);
+            timeStart = isoCell;
+            timeEnd = endOfBucket(isoCell, gb.grain);
+        }
+        else if (!gb.grain && cell != null) {
+            dimValues[gb.dimension] = cell;
+        }
+    }
+    return { timeStart, timeEnd, dimValues };
+}
+export function rowMatchesImpact(row, impact) {
+    if (row.timeEnd < impact.timeStart)
+        return false;
+    if (row.timeStart > impact.timeEnd)
+        return false;
+    for (const c of impact.constraints) {
+        const rowVal = row.dimValues[c.dimension];
+        if (rowVal === undefined)
+            continue; // row aggregates this dim
+        if (!constraintAllowsValue(c, rowVal))
+            return false;
+    }
+    return true;
+}
+function constraintAllowsValue(c, val) {
+    switch (c.operator) {
+        case "=":
+            return val === c.value;
+        case "!=":
+            return val !== c.value;
+        case ">":
+            return val > c.value;
+        case "<":
+            return val < c.value;
+        case ">=":
+            return val >= c.value;
+        case "<=":
+            return val <= c.value;
+        case "in":
+            return Array.isArray(c.value) && c.value.includes(val);
+        case "not_in":
+            return Array.isArray(c.value) && !c.value.includes(val);
+    }
+}
+export function decorationsFor(rows, matches, groupBys, queryRegion) {
+    if (matches.length === 0) {
+        return rows.map(() => ({ matches: [] }));
+    }
+    return rows.map((row) => {
+        const rowRegion = buildRowRegion(row, groupBys, queryRegion);
+        const hits = matches.filter((m) => rowMatchesImpact(rowRegion, m.impact.region));
+        return { matches: hits };
+    });
+}

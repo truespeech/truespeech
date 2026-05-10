@@ -69,6 +69,9 @@ export interface LexiconMatch {
     impact: Impact;
     overlap: ResolvedRegion;
 }
+export interface RowDecoration {
+    matches: LexiconMatch[];
+}
 export interface LexiconAdapter {
     add(entry: LexiconEntry): Promise<void>;
     list(): Promise<LexiconEntry[]>;

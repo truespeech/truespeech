@@ -128,6 +128,14 @@ export interface LexiconMatch {
   overlap: ResolvedRegion;
 }
 
+// Per-row reconciliation: which of the COMPUTE's reconciliation matches
+// apply to a specific result row, given the row's slice of the data.
+// Index-aligned with ComputeResult.results.rows. An empty `matches`
+// array means the row is unaffected by any lexicon entry.
+export interface RowDecoration {
+  matches: LexiconMatch[];
+}
+
 export interface LexiconAdapter {
   add(entry: LexiconEntry): Promise<void>;
   list(): Promise<LexiconEntry[]>;

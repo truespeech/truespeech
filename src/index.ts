@@ -68,6 +68,7 @@ export type {
   ResolvedRegion,
   ResolvedConstraint,
   LexiconMatch,
+  RowDecoration,
   MetricInfo,
   DimensionInfo,
   SemanticQuery,
@@ -108,7 +109,11 @@ export {
   renderTimeRegion,
   formatTimeBucket,
   endOfBucket,
+  buildRowRegion,
+  rowMatchesImpact,
+  decorationsFor,
 } from "./region.js";
+export type { RowRegion } from "./region.js";
 
 export { osiAdapter } from "./osi-adapter.js";
 export type { OsiLikeRuntime } from "./osi-adapter.js";

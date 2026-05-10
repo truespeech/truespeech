@@ -23,6 +23,9 @@ import type {
   ResolvedRegion,
   ResolvedConstraint,
   WhereOperator,
+  LexiconMatch,
+  RowDecoration,
+  GroupByClause,
 } from "./adapters.js";
 
 // ===== Resolution: AST → ResolvedRegion =====
@@ -339,4 +342,109 @@ function quarterLabel(iso: string): string {
 
 function monthLabel(iso: string): string {
   return `${year(iso)}-${pad2(month(iso))}`;
+}
+
+// ===== Per-row reconciliation =====
+//
+// COMPUTE returns rows. Each row represents a slice of the data — the
+// query's OVER region, narrowed (and grained) by any GROUP BY columns.
+// To know whether a particular row was affected by a lexicon entry we
+// ask: does the row's slice overlap the entry's impact region?
+//
+// buildRowRegion derives the row-level slice from the query region +
+// group-bys. rowMatchesImpact tests overlap. decorationsFor wires both
+// together for a full result set.
+
+export interface RowRegion {
+  timeStart: string;
+  timeEnd: string;
+  dimValues: Record<string, string | number>;
+}
+
+export function buildRowRegion(
+  row: (string | number | null)[],
+  groupBys: GroupByClause[],
+  queryRegion: ResolvedRegion
+): RowRegion {
+  let timeStart = queryRegion.timeStart;
+  let timeEnd = queryRegion.timeEnd;
+  const dimValues: Record<string, string | number> = {};
+
+  // Inherit equality constraints from the query's OVER region — e.g.
+  // a top-level `AND region = 'west'` pins every row to that value.
+  for (const c of queryRegion.constraints) {
+    if (c.operator === "=" && !Array.isArray(c.value)) {
+      dimValues[c.dimension] = c.value;
+    }
+  }
+
+  for (let i = 0; i < groupBys.length; i++) {
+    const gb = groupBys[i];
+    const cell = row[i];
+    if (gb.grain && cell != null) {
+      const isoCell = String(cell).slice(0, 10);
+      timeStart = isoCell;
+      timeEnd = endOfBucket(isoCell, gb.grain);
+    } else if (!gb.grain && cell != null) {
+      dimValues[gb.dimension] = cell;
+    }
+  }
+
+  return { timeStart, timeEnd, dimValues };
+}
+
+export function rowMatchesImpact(
+  row: RowRegion,
+  impact: ResolvedRegion
+): boolean {
+  if (row.timeEnd < impact.timeStart) return false;
+  if (row.timeStart > impact.timeEnd) return false;
+  for (const c of impact.constraints) {
+    const rowVal = row.dimValues[c.dimension];
+    if (rowVal === undefined) continue; // row aggregates this dim
+    if (!constraintAllowsValue(c, rowVal)) return false;
+  }
+  return true;
+}
+
+function constraintAllowsValue(
+  c: ResolvedConstraint,
+  val: string | number
+): boolean {
+  switch (c.operator) {
+    case "=":
+      return val === c.value;
+    case "!=":
+      return val !== c.value;
+    case ">":
+      return (val as string | number) > (c.value as string | number);
+    case "<":
+      return (val as string | number) < (c.value as string | number);
+    case ">=":
+      return (val as string | number) >= (c.value as string | number);
+    case "<=":
+      return (val as string | number) <= (c.value as string | number);
+    case "in":
+      return Array.isArray(c.value) && c.value.includes(val);
+    case "not_in":
+      return Array.isArray(c.value) && !c.value.includes(val);
+  }
+}
+
+export function decorationsFor(
+  rows: (string | number | null)[][],
+  matches: LexiconMatch[],
+  groupBys: GroupByClause[],
+  queryRegion: ResolvedRegion
+): RowDecoration[] {
+  if (matches.length === 0) {
+    return rows.map(() => ({ matches: [] }));
+  }
+  return rows.map((row) => {
+    const rowRegion = buildRowRegion(row, groupBys, queryRegion);
+    const hits = matches.filter((m) =>
+      rowMatchesImpact(rowRegion, m.impact.region)
+    );
+    return { matches: hits };
+  });
 }

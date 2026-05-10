@@ -39,8 +39,15 @@ import type {
   Grain,
   DimensionInfo,
   ResolvedRegion,
+  RowDecoration,
 } from "./adapters.js";
-import { resolveRegion, intersectRegions, firstDayOf, lastDayOf } from "./region.js";
+import {
+  resolveRegion,
+  intersectRegions,
+  firstDayOf,
+  lastDayOf,
+  decorationsFor,
+} from "./region.js";
 
 export interface ExecuteOpts {
   semanticLayer: SemanticLayerAdapter;
@@ -57,9 +64,13 @@ export interface ComputeResult {
   results: QueryResult;
   reconciliation: LexiconMatch[];
   // The resolved OVER region the query addressed. Exposed so consumers
-  // can reason about which slice of the data each result row represents
-  // — e.g., per-row reconciliation matching in a UI.
+  // can reason about which slice of the data each result row represents.
   region: ResolvedRegion;
+  // Per-row reconciliation: index-aligned with results.rows. Each entry
+  // lists the subset of `reconciliation` matches that apply to that
+  // specific row's slice of the data. An empty `matches` array means
+  // the row is unaffected.
+  decorations: RowDecoration[];
 }
 
 export interface RegisterResult {
@@ -176,6 +187,15 @@ async function executeCompute(
     ? await reconcile(metric.name, region, lexicon)
     : [];
 
+  // 8. Per-row decorations: for each result row, which reconciliation
+  //    matches actually apply to that row's slice of the data.
+  const decorations = decorationsFor(
+    results.rows,
+    reconciliation,
+    semanticQuery.groupBy ?? [],
+    region
+  );
+
   return {
     statement: "compute",
     semanticQuery,
@@ -183,6 +203,7 @@ async function executeCompute(
     results,
     reconciliation,
     region,
+    decorations,
   };
 }
 

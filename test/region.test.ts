@@ -6,11 +6,18 @@ import {
   renderTimeRegion,
   renderRegion,
   formatTimeBucket,
+  buildRowRegion,
+  rowMatchesImpact,
+  decorationsFor,
 } from "../src/region.js";
 import { tokenize } from "../src/tokenize.js";
 import { parse } from "../src/parse.js";
 import type { ComputeStatement } from "../src/ast.js";
-import type { ResolvedRegion } from "../src/adapters.js";
+import type {
+  ResolvedRegion,
+  GroupByClause,
+  LexiconMatch,
+} from "../src/adapters.js";
 
 // Helper: parse `OVER ...` out of a synthetic COMPUTE statement so we
 // can pump real OverClauses into resolveRegion.
@@ -397,5 +404,141 @@ describe("formatTimeBucket", () => {
 
   it("handles February correctly in leap years", () => {
     assert.equal(formatTimeBucket("2024-02-01", "month"), "2024-02");
+  });
+});
+
+// ===========================================================================
+// Per-row reconciliation
+// ===========================================================================
+
+describe("buildRowRegion", () => {
+  const queryRegion: ResolvedRegion = rr("2026-01-01", "2026-12-31");
+
+  it("returns the full query region when there are no group-bys", () => {
+    const r = buildRowRegion([], [], queryRegion);
+    assert.equal(r.timeStart, "2026-01-01");
+    assert.equal(r.timeEnd, "2026-12-31");
+    assert.deepEqual(r.dimValues, {});
+  });
+
+  it("populates dimValues from a categorical group-by", () => {
+    const groupBys: GroupByClause[] = [{ dimension: "region" }];
+    const r = buildRowRegion(["northeast", 1234], groupBys, queryRegion);
+    assert.equal(r.timeStart, "2026-01-01");
+    assert.equal(r.timeEnd, "2026-12-31");
+    assert.deepEqual(r.dimValues, { region: "northeast" });
+  });
+
+  it("narrows the time interval from a time-grain group-by", () => {
+    const groupBys: GroupByClause[] = [
+      { dimension: "order_date", grain: "month" },
+    ];
+    const r = buildRowRegion(["2026-03-01", 555], groupBys, queryRegion);
+    assert.equal(r.timeStart, "2026-03-01");
+    assert.equal(r.timeEnd, "2026-03-31");
+  });
+
+  it("inherits equality constraints from the query region as fixed dim values", () => {
+    const region: ResolvedRegion = rr("2026-01-01", "2026-12-31", [
+      { dimension: "region", operator: "=", value: "west" },
+    ]);
+    const r = buildRowRegion([], [], region);
+    assert.deepEqual(r.dimValues, { region: "west" });
+  });
+});
+
+describe("rowMatchesImpact", () => {
+  it("matches when time overlaps and dims are compatible", () => {
+    const row = {
+      timeStart: "2026-03-01",
+      timeEnd: "2026-03-31",
+      dimValues: { region: "northeast" },
+    };
+    const impact = rr("2026-03-08", "2026-03-12", [
+      { dimension: "region", operator: "=", value: "northeast" },
+    ]);
+    assert.equal(rowMatchesImpact(row, impact), true);
+  });
+
+  it("rejects when row's time interval is entirely before impact", () => {
+    const row = {
+      timeStart: "2026-01-01",
+      timeEnd: "2026-01-31",
+      dimValues: {},
+    };
+    const impact = rr("2026-03-01", "2026-03-31");
+    assert.equal(rowMatchesImpact(row, impact), false);
+  });
+
+  it("rejects when row's time interval is entirely after impact", () => {
+    const row = {
+      timeStart: "2026-05-01",
+      timeEnd: "2026-05-31",
+      dimValues: {},
+    };
+    const impact = rr("2026-03-01", "2026-03-31");
+    assert.equal(rowMatchesImpact(row, impact), false);
+  });
+
+  it("rejects when row's categorical value conflicts with impact constraint", () => {
+    const row = {
+      timeStart: "2026-03-01",
+      timeEnd: "2026-03-31",
+      dimValues: { region: "west" },
+    };
+    const impact = rr("2026-03-01", "2026-03-31", [
+      { dimension: "region", operator: "=", value: "northeast" },
+    ]);
+    assert.equal(rowMatchesImpact(row, impact), false);
+  });
+
+  it("matches when row aggregates a dim the impact constrains (partial-affect case)", () => {
+    // Row covers all regions; impact only flags 'northeast'. The row's
+    // computed value still includes northeast data, so the row is
+    // partially affected.
+    const row = {
+      timeStart: "2026-03-01",
+      timeEnd: "2026-03-31",
+      dimValues: {},
+    };
+    const impact = rr("2026-03-01", "2026-03-31", [
+      { dimension: "region", operator: "=", value: "northeast" },
+    ]);
+    assert.equal(rowMatchesImpact(row, impact), true);
+  });
+});
+
+describe("decorationsFor", () => {
+  it("returns empty match arrays for every row when there are no matches", () => {
+    const rows = [
+      ["a", 1],
+      ["b", 2],
+      ["c", 3],
+    ];
+    const decorations = decorationsFor(rows, [], [], rr("2026", "2026"));
+    assert.equal(decorations.length, 3);
+    assert.ok(decorations.every((d) => d.matches.length === 0));
+  });
+
+  it("filters reconciliation matches per row by row region", () => {
+    // A region group-by exposes per-row dim values; only the northeast row
+    // should pick up an impact scoped to region='northeast'.
+    const groupBys: GroupByClause[] = [{ dimension: "region" }];
+    const queryRegion = rr("2026-03-01", "2026-03-31");
+    const impactRegion = rr("2026-03-08", "2026-03-12", [
+      { dimension: "region", operator: "=", value: "northeast" },
+    ]);
+    const match: LexiconMatch = {
+      entry: { name: "ne_outage", impacts: [], description: "..." },
+      impact: { metric: "total_sales", region: impactRegion },
+      overlap: impactRegion,
+    };
+    const rows = [
+      ["northeast", 100],
+      ["west", 200],
+    ];
+    const decorations = decorationsFor(rows, [match], groupBys, queryRegion);
+    assert.equal(decorations[0].matches.length, 1);
+    assert.equal(decorations[1].matches.length, 0);
   });
 });

@@ -11,7 +11,7 @@
 // underlying field (e.g. order_date_month). We post-process: rename
 // the column back to "month" in the returned QueryResult so the user
 // sees what they wrote.
-import { resolveRegion, intersectRegions, firstDayOf, lastDayOf } from "./region.js";
+import { resolveRegion, intersectRegions, firstDayOf, lastDayOf, decorationsFor, } from "./region.js";
 export async function execute(stmt, opts) {
     switch (stmt.kind) {
         case "compute":
@@ -101,6 +101,9 @@ async function executeCompute(stmt, opts) {
     const reconciliation = lexicon
         ? await reconcile(metric.name, region, lexicon)
         : [];
+    // 8. Per-row decorations: for each result row, which reconciliation
+    //    matches actually apply to that row's slice of the data.
+    const decorations = decorationsFor(results.rows, reconciliation, semanticQuery.groupBy ?? [], region);
     return {
         statement: "compute",
         semanticQuery,
@@ -108,6 +111,7 @@ async function executeCompute(stmt, opts) {
         results,
         reconciliation,
         region,
+        decorations,
     };
 }
 // ===== REGISTER =====
