@@ -45,9 +45,19 @@ export interface QueryResult {
 export interface DatabaseAdapter {
     execute(sql: string): Promise<QueryResult>;
 }
-export interface LexiconEntry {
+export type LexiconEntry = RegionLexiconEntry | BoundaryLexiconEntry;
+export interface RegionLexiconEntry {
+    kind: "region";
     name: string;
     impacts: Impact[];
+    description: string;
+}
+export interface BoundaryLexiconEntry {
+    kind: "boundary";
+    name: string;
+    at: string;
+    constraints: ResolvedConstraint[];
+    metrics: string[];
     description: string;
 }
 export interface Impact {
@@ -64,10 +74,18 @@ export interface ResolvedConstraint {
     operator: WhereOperator;
     value: string | number | (string | number)[];
 }
-export interface LexiconMatch {
-    entry: LexiconEntry;
+export type LexiconMatch = RegionMatch | BoundaryMatch;
+export interface RegionMatch {
+    kind: "region";
+    entry: RegionLexiconEntry;
     impact: Impact;
     overlap: ResolvedRegion;
+}
+export interface BoundaryMatch {
+    kind: "boundary";
+    entry: BoundaryLexiconEntry;
+    metric: string;
+    crossedAt: string;
 }
 export interface RowDecoration {
     matches: LexiconMatch[];

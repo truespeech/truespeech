@@ -46,7 +46,7 @@ function resolveTime(region) {
             return { start: firstDayOf(region.bound), end: "9999-12-31" };
     }
 }
-function resolveConstraint(c) {
+export function resolveConstraint(c) {
     const dim = c.dimension.name;
     const pred = c.predicate;
     switch (pred.kind) {
@@ -323,6 +323,35 @@ export function rowMatchesImpact(row, impact) {
     }
     return true;
 }
+// Boundary triggering: a row's value mixes inputs from both sides of
+// the cut iff its time interval *straddles* the cut date AND its
+// predicate space is compatible with the boundary's categorical scope.
+//
+// Straddling: the row spans data from before AND from at-or-after the
+// cut. Concretely: rowStart < at <= rowEnd. The "<=" on the right makes
+// "T is the first day of the new regime" the natural reading — a row
+// that starts exactly at T contains only post-cut data and does NOT
+// trigger.
+//
+// Predicate compatibility: same logic as rowMatchesImpact — if the row
+// fixes a dim to a value that's incompatible with the boundary's scope,
+// the row sits entirely outside the cut's reach and doesn't trigger.
+// If the row aggregates a scoped dim (no row-level value), we treat it
+// as overlapping the scope (the row's computed value pulls from data
+// the boundary affects).
+export function crossesBoundary(row, boundary) {
+    if (!(row.timeStart < boundary.at && boundary.at <= row.timeEnd)) {
+        return false;
+    }
+    for (const c of boundary.constraints) {
+        const rowVal = row.dimValues[c.dimension];
+        if (rowVal === undefined)
+            continue; // row aggregates this dim
+        if (!constraintAllowsValue(c, rowVal))
+            return false;
+    }
+    return true;
+}
 function constraintAllowsValue(c, val) {
     switch (c.operator) {
         case "=":
@@ -349,7 +378,13 @@ export function decorationsFor(rows, matches, groupBys, queryRegion) {
     }
     return rows.map((row) => {
         const rowRegion = buildRowRegion(row, groupBys, queryRegion);
-        const hits = matches.filter((m) => rowMatchesImpact(rowRegion, m.impact.region));
+        const hits = matches.filter((m) => {
+            if (m.kind === "region") {
+                return rowMatchesImpact(rowRegion, m.impact.region);
+            }
+            // boundary
+            return crossesBoundary(rowRegion, m.entry);
+        });
         return { matches: hits };
     });
 }

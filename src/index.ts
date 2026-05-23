@@ -111,6 +111,7 @@ export {
   endOfBucket,
   buildRowRegion,
   rowMatchesImpact,
+  crossesBoundary,
   decorationsFor,
 } from "./region.js";
 export type { RowRegion } from "./region.js";

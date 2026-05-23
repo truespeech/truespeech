@@ -164,14 +164,22 @@ class Parser {
     // ===== REGISTER =====
     parseRegister() {
         const registerTok = this.advance(); // REGISTER
-        // Entry kind — currently only "region", but required at parse time
-        // so adding new kinds (e.g. "boundary") later is non-breaking. Soft
-        // keyword: "region" is also a valid identifier (it's a common
-        // dimension name) so we match it as text rather than tokenizing it
-        // as a reserved word.
-        if (!this.expect("identifier", "region", "expected_token", 'Expected entry kind "region" after REGISTER', "REGISTER takes an entry kind followed by the entry name; only `region` is currently defined")) {
-            return null;
+        // Entry kind — soft keyword. "region" and "boundary" are both
+        // identifier-classified at tokenize time (so they can also serve as
+        // dimension names) and dispatched here by text.
+        const kindTok = this.peek();
+        if (kindTok.kind === "identifier" && kindTok.text.toLowerCase() === "region") {
+            this.advance();
+            return this.parseRegisterRegionTail(registerTok);
         }
+        if (kindTok.kind === "identifier" && kindTok.text.toLowerCase() === "boundary") {
+            this.advance();
+            return this.parseRegisterBoundaryTail(registerTok);
+        }
+        this.errorAt(kindTok.span, "expected_token", 'Expected entry kind "region" or "boundary" after REGISTER', "REGISTER takes an entry kind followed by the entry name");
+        return null;
+    }
+    parseRegisterRegionTail(registerTok) {
         const nameTok = this.expect("identifier", undefined, "expected_token", "Expected an entry name (identifier) after REGISTER region");
         if (!nameTok)
             return null;
@@ -205,6 +213,58 @@ class Parser {
             entryKind: "region",
             name,
             impactClauses,
+            description,
+            span: spanFrom(registerTok.span, lastTok.span ?? registerTok.span),
+        };
+    }
+    parseRegisterBoundaryTail(registerTok) {
+        const nameTok = this.expect("identifier", undefined, "expected_token", "Expected an entry name (identifier) after REGISTER boundary");
+        if (!nameTok)
+            return null;
+        const name = { name: nameTok.text, span: nameTok.span };
+        // AT <time-literal> — the cut date. Validator enforces day-form.
+        if (!this.expect("keyword", "at", "expected_token", "Expected AT after boundary name", "REGISTER boundary takes an AT <date> clause naming the cut")) {
+            return null;
+        }
+        const at = this.parseTimeLiteralOrYear();
+        if (!at)
+            return null;
+        // Optional AND <constraint>... — categorical scoping for the cut.
+        const constraints = [];
+        while (this.matchKeyword("and")) {
+            const c = this.parseConstraint();
+            if (!c)
+                return null;
+            constraints.push(c);
+        }
+        // IMPACTING <metric>[, <metric>...] — single set of metrics share AT.
+        if (!this.expect("keyword", "impacting", "expected_token", "Expected IMPACTING after AT clause", "REGISTER boundary requires an IMPACTING <metric>[, <metric>...] clause")) {
+            return null;
+        }
+        const metrics = this.parseMetricList();
+        if (metrics.length === 0) {
+            this.errorHere("expected_token", "Expected at least one metric after IMPACTING");
+            return null;
+        }
+        if (!this.expect("keyword", "with", "expected_token", "Expected WITH after IMPACTING clause", "REGISTER boundary requires a WITH <description> clause")) {
+            return null;
+        }
+        const description = this.parseStringLiteral();
+        if (!description)
+            return null;
+        this.matchPunct(";"); // optional terminator
+        if (!this.isAtEnd()) {
+            const tok = this.peek();
+            this.errorAt(tok.span, "unexpected_token", `Unexpected token "${tok.text}" after end of statement`);
+        }
+        const lastTok = this.tokens[Math.max(0, this.pos - 1)];
+        return {
+            kind: "register",
+            entryKind: "boundary",
+            name,
+            at,
+            constraints,
+            metrics,
             description,
             span: spanFrom(registerTok.span, lastTok.span ?? registerTok.span),
         };

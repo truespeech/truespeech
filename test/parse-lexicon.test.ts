@@ -2,7 +2,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { parse } from "../src/parse.js";
 import { tokenize } from "../src/tokenize.js";
-import type { RegisterStatement, CheckStatement } from "../src/ast.js";
+import type {
+  RegisterStatement,
+  RegisterBoundaryStatement,
+  CheckStatement,
+} from "../src/ast.js";
 
 function parseSrc(src: string) {
   return parse(tokenize(src));
@@ -99,6 +103,98 @@ describe("parse REGISTER — minimal", () => {
 });
 
 // ===========================================================================
+// REGISTER boundary — happy paths
+// ===========================================================================
+
+describe("parse REGISTER boundary — minimal", () => {
+  it("parses bare AT + IMPACTING + WITH", () => {
+    const ast = register(
+      `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING average_order_value WITH "AOV calc changed"`
+    );
+    assert.equal(ast.entryKind, "boundary");
+    assert.equal(ast.name.name, "metric_redef");
+    const b = ast as RegisterBoundaryStatement;
+    assert.equal(b.at.unit, "day");
+    assert.equal(b.at.year, 2026);
+    assert.equal(b.at.month, 1);
+    assert.equal(b.at.day, 1);
+    assert.equal(b.constraints.length, 0);
+    assert.equal(b.metrics.length, 1);
+    assert.equal(b.metrics[0].name, "average_order_value");
+    assert.equal(b.description.value, "AOV calc changed");
+  });
+
+  it("parses AT with multiple impacted metrics", () => {
+    const ast = register(
+      `REGISTER boundary pricing_change AT 2026-01-01 IMPACTING total_sales, average_order_value WITH "x"`
+    );
+    const b = ast as RegisterBoundaryStatement;
+    assert.equal(b.metrics.length, 2);
+    assert.equal(b.metrics[0].name, "total_sales");
+    assert.equal(b.metrics[1].name, "average_order_value");
+  });
+
+  it("parses AT with categorical scoping (single AND)", () => {
+    const ast = register(
+      `REGISTER boundary ltv_gov_redef
+         AT 2026-01-01 AND product_tier = 'government'
+         IMPACTING LTV
+         WITH "LTV redefined for government tier"`
+    );
+    const b = ast as RegisterBoundaryStatement;
+    assert.equal(b.constraints.length, 1);
+    assert.equal(b.metrics[0].name, "LTV");
+  });
+
+  it("parses AT with multiple AND constraints", () => {
+    const ast = register(
+      `REGISTER boundary x AT 2026-01-01 AND region = 'northeast' AND product_tier = 'enterprise' IMPACTING total_sales WITH "x"`
+    );
+    const b = ast as RegisterBoundaryStatement;
+    assert.equal(b.constraints.length, 2);
+  });
+
+  it("is case-insensitive on keywords", () => {
+    register(
+      `register boundary x at 2026-01-01 impacting total_sales with "x"`
+    );
+  });
+});
+
+describe("parse REGISTER boundary — errors", () => {
+  it("errors when AT is missing", () => {
+    const r = parseSrc(
+      `REGISTER boundary x IMPACTING total_sales WITH "x"`
+    );
+    assert.ok(r.errors.length > 0);
+    assert.match(r.errors[0].message, /AT/i);
+  });
+
+  it("errors when IMPACTING is missing", () => {
+    const r = parseSrc(
+      `REGISTER boundary x AT 2026-01-01 WITH "x"`
+    );
+    assert.ok(r.errors.length > 0);
+    assert.match(r.errors[0].message, /IMPACTING/i);
+  });
+
+  it("errors when WITH is missing", () => {
+    const r = parseSrc(
+      `REGISTER boundary x AT 2026-01-01 IMPACTING total_sales`
+    );
+    assert.ok(r.errors.length > 0);
+    assert.match(r.errors[0].message, /WITH/i);
+  });
+
+  it("errors when name is missing", () => {
+    const r = parseSrc(
+      `REGISTER boundary AT 2026-01-01 IMPACTING total_sales WITH "x"`
+    );
+    assert.ok(r.errors.length > 0);
+  });
+});
+
+// ===========================================================================
 // REGISTER — errors
 // ===========================================================================
 
@@ -109,9 +205,9 @@ describe("parse REGISTER — errors", () => {
     assert.match(r.errors[0].message, /entry kind/i);
   });
 
-  it("errors when entry kind is not 'region'", () => {
+  it("errors when entry kind is not recognized", () => {
     const r = parseSrc(
-      `REGISTER boundary x IMPACTING order_count OVER 2026 WITH "x"`
+      `REGISTER patch x IMPACTING order_count OVER 2026 WITH "x"`
     );
     assert.ok(r.errors.length > 0);
     assert.match(r.errors[0].message, /entry kind/i);

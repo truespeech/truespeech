@@ -11,7 +11,7 @@
 // underlying field (e.g. order_date_month). We post-process: rename
 // the column back to "month" in the returned QueryResult so the user
 // sees what they wrote.
-import { resolveRegion, intersectRegions, firstDayOf, lastDayOf, decorationsFor, } from "./region.js";
+import { resolveRegion, resolveConstraint, intersectRegions, firstDayOf, lastDayOf, decorationsFor, buildRowRegion, crossesBoundary, } from "./region.js";
 export async function execute(stmt, opts) {
     switch (stmt.kind) {
         case "compute":
@@ -120,24 +120,41 @@ async function executeRegister(stmt, opts) {
     if (!lexicon) {
         throw new Error("REGISTER requires a lexicon adapter; none was configured");
     }
-    // Expand multi-metric IMPACTING shorthand into one Impact per metric,
-    // resolving each region against the metric's primary time field.
-    const impacts = [];
-    for (const clause of stmt.impactClauses) {
-        for (const metricRef of clause.metrics) {
-            const primaryTime = semanticLayer.primaryTimeForMetric(metricRef.name);
-            if (!primaryTime) {
-                // Should have been caught by validate(); guard so the runtime
-                // never silently produces an entry that can never match.
-                throw new Error(`Cannot register: metric "${metricRef.name}" has no primary time`);
+    if (stmt.entryKind === "region") {
+        // Expand multi-metric IMPACTING shorthand into one Impact per metric,
+        // resolving each region against the metric's primary time field.
+        const impacts = [];
+        for (const clause of stmt.impactClauses) {
+            for (const metricRef of clause.metrics) {
+                const primaryTime = semanticLayer.primaryTimeForMetric(metricRef.name);
+                if (!primaryTime) {
+                    // Should have been caught by validate(); guard so the runtime
+                    // never silently produces an entry that can never match.
+                    throw new Error(`Cannot register: metric "${metricRef.name}" has no primary time`);
+                }
+                const region = resolveRegion(clause.over, primaryTime.name);
+                impacts.push({ metric: metricRef.name, region });
             }
-            const region = resolveRegion(clause.over, primaryTime.name);
-            impacts.push({ metric: metricRef.name, region });
         }
+        const entry = {
+            kind: "region",
+            name: stmt.name.name,
+            impacts,
+            description: stmt.description.value,
+        };
+        await lexicon.add(entry);
+        return { statement: "register", entry };
     }
+    // entryKind === "boundary"
+    const at = firstDayOf(stmt.at);
+    const constraints = stmt.constraints.map(resolveConstraint);
+    const metrics = stmt.metrics.map((m) => m.name);
     const entry = {
+        kind: "boundary",
         name: stmt.name.name,
-        impacts,
+        at,
+        constraints,
+        metrics,
         description: stmt.description.value,
     };
     await lexicon.add(entry);
@@ -156,14 +173,33 @@ async function executeCheck(stmt, opts) {
         if (!primaryTime)
             continue; // validation should have flagged
         const queryRegion = resolveRegion(stmt.over, primaryTime.name);
+        // Treat the queryRegion as a single virtual row for boundary
+        // crossing; works because buildRowRegion with no group-bys returns
+        // the queryRegion's bounds + its equality constraints as dimValues.
+        const virtualRow = buildRowRegion([], [], queryRegion);
         for (const entry of entries) {
-            for (const impact of entry.impacts) {
-                if (impact.metric !== metricRef.name)
+            if (entry.kind === "region") {
+                for (const impact of entry.impacts) {
+                    if (impact.metric !== metricRef.name)
+                        continue;
+                    const overlap = intersectRegions(queryRegion, impact.region);
+                    if (!overlap)
+                        continue;
+                    matches.push({ kind: "region", entry, impact, overlap });
+                }
+            }
+            else {
+                // boundary
+                if (!entry.metrics.includes(metricRef.name))
                     continue;
-                const overlap = intersectRegions(queryRegion, impact.region);
-                if (!overlap)
+                if (!crossesBoundary(virtualRow, entry))
                     continue;
-                matches.push({ entry, impact, overlap });
+                matches.push({
+                    kind: "boundary",
+                    entry,
+                    metric: metricRef.name,
+                    crossedAt: entry.at,
+                });
             }
         }
     }
@@ -173,14 +209,32 @@ async function executeCheck(stmt, opts) {
 async function reconcile(metric, queryRegion, lexicon) {
     const entries = await lexicon.list();
     const matches = [];
+    // Same virtual-row trick as executeCheck — lets us reuse crossesBoundary
+    // for query-level boundary matching without a parallel implementation.
+    const virtualRow = buildRowRegion([], [], queryRegion);
     for (const entry of entries) {
-        for (const impact of entry.impacts) {
-            if (impact.metric !== metric)
+        if (entry.kind === "region") {
+            for (const impact of entry.impacts) {
+                if (impact.metric !== metric)
+                    continue;
+                const overlap = intersectRegions(queryRegion, impact.region);
+                if (!overlap)
+                    continue;
+                matches.push({ kind: "region", entry, impact, overlap });
+            }
+        }
+        else {
+            // boundary
+            if (!entry.metrics.includes(metric))
                 continue;
-            const overlap = intersectRegions(queryRegion, impact.region);
-            if (!overlap)
+            if (!crossesBoundary(virtualRow, entry))
                 continue;
-            matches.push({ entry, impact, overlap });
+            matches.push({
+                kind: "boundary",
+                entry,
+                metric,
+                crossedAt: entry.at,
+            });
         }
     }
     return matches;

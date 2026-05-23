@@ -69,11 +69,19 @@ describe("tokenize — keywords, grains, time-keywords", () => {
       "check",
       "impacting",
       "with",
+      "at",
     ];
     for (const w of words) {
       const t = noEof(tokenize(w));
       assert.deepEqual(kinds(t), ["keyword"], w);
     }
+  });
+
+  it("classifies 'boundary' as identifier (soft keyword, parser handles)", () => {
+    // Mirrors how 'region' is left as an identifier and handled
+    // contextually by the parser after REGISTER.
+    const t = noEof(tokenize("boundary"));
+    assert.deepEqual(kinds(t), ["identifier"]);
   });
 
   it("classifies grain words as grain", () => {

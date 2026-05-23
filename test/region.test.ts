@@ -8,6 +8,7 @@ import {
   formatTimeBucket,
   buildRowRegion,
   rowMatchesImpact,
+  crossesBoundary,
   decorationsFor,
 } from "../src/region.js";
 import { tokenize } from "../src/tokenize.js";
@@ -529,7 +530,13 @@ describe("decorationsFor", () => {
       { dimension: "region", operator: "=", value: "northeast" },
     ]);
     const match: LexiconMatch = {
-      entry: { name: "ne_outage", impacts: [], description: "..." },
+      kind: "region",
+      entry: {
+        kind: "region",
+        name: "ne_outage",
+        impacts: [],
+        description: "...",
+      },
       impact: { metric: "total_sales", region: impactRegion },
       overlap: impactRegion,
     };
@@ -540,5 +547,97 @@ describe("decorationsFor", () => {
     const decorations = decorationsFor(rows, [match], groupBys, queryRegion);
     assert.equal(decorations[0].matches.length, 1);
     assert.equal(decorations[1].matches.length, 0);
+  });
+});
+
+describe("crossesBoundary", () => {
+  it("triggers when the row's interval straddles the cut", () => {
+    const row = {
+      timeStart: "2025-10-01",
+      timeEnd: "2026-03-31",
+      dimValues: {},
+    };
+    assert.equal(
+      crossesBoundary(row, { at: "2026-01-01", constraints: [] }),
+      true
+    );
+  });
+
+  it("does not trigger when the row is entirely before the cut", () => {
+    const row = {
+      timeStart: "2025-10-01",
+      timeEnd: "2025-12-31",
+      dimValues: {},
+    };
+    assert.equal(
+      crossesBoundary(row, { at: "2026-01-01", constraints: [] }),
+      false
+    );
+  });
+
+  it("does not trigger when the row starts exactly at the cut", () => {
+    // Row starts on the cut day, so it contains only post-cut data.
+    // The "<=" on the right makes this the natural reading: T is the
+    // first day of the new regime.
+    const row = {
+      timeStart: "2026-01-01",
+      timeEnd: "2026-03-31",
+      dimValues: {},
+    };
+    assert.equal(
+      crossesBoundary(row, { at: "2026-01-01", constraints: [] }),
+      false
+    );
+  });
+
+  it("does trigger when the row ends exactly at the cut", () => {
+    // Row ends on the cut day — the cut day's data is included, mixing
+    // with prior days in the same row.
+    const row = {
+      timeStart: "2025-10-01",
+      timeEnd: "2026-01-01",
+      dimValues: {},
+    };
+    assert.equal(
+      crossesBoundary(row, { at: "2026-01-01", constraints: [] }),
+      true
+    );
+  });
+
+  it("does not trigger when row's predicate is incompatible with boundary scope", () => {
+    const row = {
+      timeStart: "2025-10-01",
+      timeEnd: "2026-03-31",
+      dimValues: { product_tier: "consumer" },
+    };
+    assert.equal(
+      crossesBoundary(row, {
+        at: "2026-01-01",
+        constraints: [
+          { dimension: "product_tier", operator: "=", value: "government" },
+        ],
+      }),
+      false
+    );
+  });
+
+  it("triggers when row aggregates a scoped dim (partial-affect case)", () => {
+    // Row covers all tiers; boundary scopes to government only. The
+    // row's computed value still pulls government data on both sides
+    // of the cut → mixing happens → flag.
+    const row = {
+      timeStart: "2025-10-01",
+      timeEnd: "2026-03-31",
+      dimValues: {},
+    };
+    assert.equal(
+      crossesBoundary(row, {
+        at: "2026-01-01",
+        constraints: [
+          { dimension: "product_tier", operator: "=", value: "government" },
+        ],
+      }),
+      true
+    );
   });
 });

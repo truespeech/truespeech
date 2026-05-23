@@ -92,9 +92,34 @@ export interface DatabaseAdapter {
 // database for persistence, etc. The runtime treats the lexicon as a
 // flat list — query/filter logic happens in the runtime itself.
 
-export interface LexiconEntry {
+// Lexicon entries come in multiple kinds, discriminated by `kind`.
+//
+// `region`: a patch — time interval plus optional categorical constraints
+// — over which one or more metrics are affected. Each Impact is a
+// (metric, region) pair, post-expansion of multi-metric IMPACTING.
+//
+// `boundary`: a cut at an instant that partitions the dimensional space.
+// A single AT date applies to all impacted metrics. Optional categorical
+// constraints scope the cut to a sub-population. Triggers when a query's
+// computed value mixes inputs from both sides of the cut.
+export type LexiconEntry = RegionLexiconEntry | BoundaryLexiconEntry;
+
+export interface RegionLexiconEntry {
+  kind: "region";
   name: string;
   impacts: Impact[];
+  description: string;
+}
+
+export interface BoundaryLexiconEntry {
+  kind: "boundary";
+  name: string;
+  // ISO YYYY-MM-DD, the instant of the cut.
+  at: string;
+  // Categorical scoping for the cut (empty if applies to all dim values).
+  constraints: ResolvedConstraint[];
+  // Metrics affected by this cut.
+  metrics: string[];
   description: string;
 }
 
@@ -118,14 +143,32 @@ export interface ResolvedConstraint {
   value: string | number | (string | number)[];
 }
 
-// A successful match between a query (CHECK or COMPUTE reconciliation)
-// and a lexicon entry. The `impact` is the specific IMPACTING clause
-// that matched; the `overlap` is the actual region intersection
-// computed at match time, useful for surfacing the *why*.
-export interface LexiconMatch {
-  entry: LexiconEntry;
+// A successful match between a query and a lexicon entry, discriminated
+// by `kind` to mirror LexiconEntry's discrimination.
+//
+// `region`: the query's region overlapped the entry's impact region.
+// `impact` is the specific IMPACTING clause that matched; `overlap` is
+// the actual region intersection computed at match time, useful for
+// surfacing the *why*.
+//
+// `boundary`: the query's region straddled the entry's cut date AND
+// the query's predicate space overlapped the entry's categorical scope.
+// `metric` is the impacted metric the match was found for; `crossedAt`
+// is the boundary's AT date.
+export type LexiconMatch = RegionMatch | BoundaryMatch;
+
+export interface RegionMatch {
+  kind: "region";
+  entry: RegionLexiconEntry;
   impact: Impact;
   overlap: ResolvedRegion;
+}
+
+export interface BoundaryMatch {
+  kind: "boundary";
+  entry: BoundaryLexiconEntry;
+  metric: string;
+  crossedAt: string;
 }
 
 // Per-row reconciliation: which of the COMPUTE's reconciliation matches

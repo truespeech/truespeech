@@ -22,6 +22,11 @@ export const KEYWORDS = new Set([
     "check",
     "impacting",
     "with",
+    // Boundary support: "at" introduces the cut date in REGISTER boundary.
+    // "boundary" itself stays as a soft keyword (identifier-classified) to
+    // mirror "region" — both are entry kinds that the parser dispatches on
+    // after REGISTER.
+    "at",
 ]);
 export const GRAINS = new Set([
     "day",

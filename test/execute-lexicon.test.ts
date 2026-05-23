@@ -123,6 +123,68 @@ describe("execute REGISTER", () => {
       /requires a lexicon adapter/
     );
   });
+
+  it("adds a boundary entry to the lexicon", async () => {
+    const lexicon = mockLexicon();
+    const result = (await execute(
+      ast(
+        `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING total_sales WITH "calc changed"`
+      ),
+      {
+        semanticLayer: retailSalesMock(),
+        database: mockDatabase(),
+        lexicon,
+      }
+    )) as RegisterResult;
+
+    assert.equal(result.entry.kind, "boundary");
+    assert.equal(result.entry.name, "metric_redef");
+    assert.equal(result.entry.description, "calc changed");
+    if (result.entry.kind !== "boundary") throw new Error("not boundary");
+    assert.equal(result.entry.at, "2026-01-01");
+    assert.deepEqual(result.entry.metrics, ["total_sales"]);
+    assert.equal(result.entry.constraints.length, 0);
+    assert.equal(lexicon.entries.length, 1);
+  });
+
+  it("captures multi-metric boundary IMPACTING", async () => {
+    const lexicon = mockLexicon();
+    const result = (await execute(
+      ast(
+        `REGISTER boundary pricing_change AT 2026-01-01 IMPACTING total_sales, average_order_value WITH "x"`
+      ),
+      {
+        semanticLayer: retailSalesMock(),
+        database: mockDatabase(),
+        lexicon,
+      }
+    )) as RegisterResult;
+
+    if (result.entry.kind !== "boundary") throw new Error("not boundary");
+    assert.deepEqual(result.entry.metrics, [
+      "total_sales",
+      "average_order_value",
+    ]);
+  });
+
+  it("captures categorical scoping in the boundary's constraints", async () => {
+    const lexicon = mockLexicon();
+    const result = (await execute(
+      ast(
+        `REGISTER boundary x AT 2026-01-01 AND product_tier = 'enterprise' IMPACTING total_sales WITH "x"`
+      ),
+      {
+        semanticLayer: retailSalesMock(),
+        database: mockDatabase(),
+        lexicon,
+      }
+    )) as RegisterResult;
+
+    if (result.entry.kind !== "boundary") throw new Error("not boundary");
+    assert.deepEqual(result.entry.constraints, [
+      { dimension: "product_tier", operator: "=", value: "enterprise" },
+    ]);
+  });
 });
 
 // ===========================================================================
@@ -132,6 +194,7 @@ describe("execute REGISTER", () => {
 describe("execute CHECK", () => {
   function botEntry(): LexiconEntry {
     return {
+      kind: "region",
       name: "bot",
       impacts: [
         {
@@ -195,6 +258,7 @@ describe("execute CHECK", () => {
 
   it("returns matches across multiple metrics in one CHECK", async () => {
     const entry: LexiconEntry = {
+      kind: "region",
       name: "multi",
       impacts: [
         {
@@ -246,6 +310,7 @@ describe("execute CHECK", () => {
 
   it("treats touching boundaries as a match (closed intervals)", async () => {
     const entry: LexiconEntry = {
+      kind: "region",
       name: "edge",
       impacts: [
         {
@@ -293,6 +358,7 @@ describe("execute CHECK", () => {
 describe("execute COMPUTE — reconciliation", () => {
   it("attaches matching lexicon entries to the result", async () => {
     const entry: LexiconEntry = {
+      kind: "region",
       name: "bot",
       impacts: [
         {
@@ -319,6 +385,7 @@ describe("execute COMPUTE — reconciliation", () => {
 
   it("returns empty reconciliation when no entries overlap", async () => {
     const entry: LexiconEntry = {
+      kind: "region",
       name: "march_event",
       impacts: [
         {
@@ -352,6 +419,7 @@ describe("execute COMPUTE — reconciliation", () => {
 
   it("ignores entries that do not impact this metric", async () => {
     const entry: LexiconEntry = {
+      kind: "region",
       name: "other",
       impacts: [
         {

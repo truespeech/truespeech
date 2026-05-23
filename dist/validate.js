@@ -64,6 +64,10 @@ function validateCompute(stmt, adapter, errors) {
 }
 // ===== REGISTER =====
 function validateRegister(stmt, adapter, errors) {
+    if (stmt.entryKind === "boundary") {
+        validateRegisterBoundary(stmt, adapter, errors);
+        return;
+    }
     const allMetrics = adapter.listMetrics();
     for (const clause of stmt.impactClauses) {
         if (clause.metrics.length === 0)
@@ -116,6 +120,72 @@ function validateRegister(stmt, adapter, errors) {
         // dimension-existence checks fire against each metric's dataset.
         for (const { primaryTime, dims } of resolved) {
             validateOverClause(clause.over, primaryTime, dims, errors);
+        }
+    }
+}
+function validateRegisterBoundary(stmt, adapter, errors) {
+    // 1. AT must be a day-form date. A boundary is an instant; a year /
+    //    quarter / month is a range, which is the wrong shape for a cut.
+    if (stmt.at.unit !== "day") {
+        errors.push(makeError({
+            code: "expected_token",
+            message: `Boundary AT must be a day-form date (YYYY-MM-DD); got ${stmt.at.unit}-form "${stmt.at.text}"`,
+            span: stmt.at.span,
+            help: "A boundary marks an instant in time. Use a date like 2026-01-01.",
+        }));
+    }
+    if (stmt.metrics.length === 0)
+        return;
+    // 2. Each metric exists; each has a primary time. Mirrors region rules.
+    const allMetrics = adapter.listMetrics();
+    const resolved = [];
+    for (const metricRef of stmt.metrics) {
+        if (!allMetrics.find((m) => m.name === metricRef.name)) {
+            errors.push(makeError({
+                code: "unknown_metric",
+                message: `Unknown metric "${metricRef.name}"`,
+                span: metricRef.span,
+                help: allMetrics.length > 0
+                    ? `Available metrics: ${allMetrics.map((m) => m.name).join(", ")}`
+                    : undefined,
+            }));
+            continue;
+        }
+        const dims = adapter.dimensionsForMetric(metricRef.name);
+        const primaryTime = adapter.primaryTimeForMetric(metricRef.name);
+        if (!primaryTime) {
+            errors.push(makeError({
+                code: "missing_primary_time",
+                message: `Cannot impact metric "${metricRef.name}" — no primary time dimension declared`,
+                span: metricRef.span,
+                help: "Mark a time field on the metric's dataset as is_primary: true",
+            }));
+            continue;
+        }
+        resolved.push({ ref: metricRef, dims, primaryTime });
+    }
+    if (resolved.length === 0)
+        return;
+    // 3. Multi-metric: all share primary time. Same rule as region.
+    if (resolved.length > 1) {
+        const firstPrimary = resolved[0].primaryTime.name;
+        for (let i = 1; i < resolved.length; i++) {
+            if (resolved[i].primaryTime.name !== firstPrimary) {
+                errors.push(makeError({
+                    code: "incompatible_metrics",
+                    message: `Metric "${resolved[i].ref.name}" has primary time "${resolved[i].primaryTime.name}", but "${resolved[0].ref.name}" uses "${firstPrimary}"`,
+                    span: resolved[i].ref.span,
+                    help: "Multi-metric IMPACTING for boundaries requires all metrics to share a primary time. Split into separate REGISTER boundary statements.",
+                }));
+            }
+        }
+    }
+    // 4. Categorical scoping constraints: dimensions must exist on the
+    //    impacted metric's dataset. Validate against each resolved metric
+    //    so per-metric dimension visibility errors fire correctly.
+    for (const { dims } of resolved) {
+        for (const c of stmt.constraints) {
+            validateConstraint(c, dims, errors);
         }
     }
 }

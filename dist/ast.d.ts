@@ -9,11 +9,22 @@ export interface ComputeStatement {
     limit?: NumberLiteral;
     span: Span;
 }
-export interface RegisterStatement {
+export type RegisterStatement = RegisterRegionStatement | RegisterBoundaryStatement;
+export interface RegisterRegionStatement {
     kind: "register";
     entryKind: "region";
     name: Identifier;
     impactClauses: ImpactClause[];
+    description: StringLiteral;
+    span: Span;
+}
+export interface RegisterBoundaryStatement {
+    kind: "register";
+    entryKind: "boundary";
+    name: Identifier;
+    at: TimeLiteral;
+    constraints: Constraint[];
+    metrics: MetricRef[];
     description: StringLiteral;
     span: Span;
 }

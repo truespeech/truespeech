@@ -194,3 +194,126 @@ describe("scenarios — harness sanity", () => {
     },
   });
 });
+
+// ===========================================================================
+// Boundary scenarios — the per-row "input mixing" model.
+// ===========================================================================
+
+describe("scenarios — boundaries", () => {
+  scenario("ungrouped query straddling the cut: single row flags", {
+    lexicon: [
+      `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING total_sales WITH "calc changed"`,
+    ],
+    database: {
+      columns: ["total_sales"],
+      rows: [[12345]],
+    },
+    query: "COMPUTE total_sales OVER 2025-Q4 to 2026-Q1",
+    expect: {
+      reconciliation: { count: 1, entryNames: ["metric_redef"] },
+      decorations: [{ matches: 1, entryNames: ["metric_redef"] }],
+    },
+  });
+
+  scenario("query entirely before the cut: no match at all", {
+    lexicon: [
+      `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING total_sales WITH "x"`,
+    ],
+    database: {
+      columns: ["total_sales"],
+      rows: [[100]],
+    },
+    query: "COMPUTE total_sales OVER 2025-Q4",
+    expect: {
+      reconciliation: { count: 0 },
+      decorations: [{ matches: 0 }],
+    },
+  });
+
+  scenario("group-by month disambiguates: only crossing rows flag", {
+    // Cut is mid-month (2026-01-15). Only the January row's bucket
+    // straddles it; Dec is entirely before, Feb entirely after.
+    lexicon: [
+      `REGISTER boundary mid_month_cut AT 2026-01-15 IMPACTING total_sales WITH "x"`,
+    ],
+    database: {
+      columns: ["month", "total_sales"],
+      rows: [
+        ["2025-12-01", 100],
+        ["2026-01-01", 200],
+        ["2026-02-01", 150],
+      ],
+    },
+    query: "COMPUTE total_sales OVER 2025-12 to 2026-02 GROUP BY month",
+    expect: {
+      reconciliation: { count: 1 },
+      decorations: [
+        { matches: 0 }, // Dec
+        { matches: 1, entryNames: ["mid_month_cut"] }, // Jan
+        { matches: 0 }, // Feb
+      ],
+    },
+  });
+
+  scenario("group-by month with cut at month boundary: no row flags", {
+    // Cut at exactly 2026-01-01, group by month → Dec is entirely
+    // before, Jan starts at the cut and contains only post-cut data.
+    // Neither row mixes. Per-row decorations are clean — but the query
+    // as a whole still straddles the cut so the query-level
+    // reconciliation registers a match.
+    lexicon: [
+      `REGISTER boundary clean_cut AT 2026-01-01 IMPACTING total_sales WITH "x"`,
+    ],
+    database: {
+      columns: ["month", "total_sales"],
+      rows: [
+        ["2025-12-01", 100],
+        ["2026-01-01", 200],
+      ],
+    },
+    query: "COMPUTE total_sales OVER 2025-12 to 2026-01 GROUP BY month",
+    expect: {
+      reconciliation: { count: 1 },
+      decorations: [{ matches: 0 }, { matches: 0 }],
+    },
+  });
+
+  scenario("categorically scoped boundary only flags the matching row", {
+    lexicon: [
+      `REGISTER boundary ltv_gov_redef
+         AT 2026-01-01 AND product_tier = 'enterprise'
+         IMPACTING total_sales
+         WITH "Enterprise pricing changed"`,
+    ],
+    database: {
+      columns: ["product_tier", "total_sales"],
+      rows: [
+        ["enterprise", 1000],
+        ["consumer", 500],
+      ],
+    },
+    query: "COMPUTE total_sales OVER 2025-Q4 to 2026-Q1 GROUP BY product_tier",
+    expect: {
+      reconciliation: { count: 1, entryNames: ["ltv_gov_redef"] },
+      decorations: [
+        { matches: 1, entryNames: ["ltv_gov_redef"] }, // enterprise — straddles + scope match
+        { matches: 0 }, // consumer — straddles but scope mismatch
+      ],
+    },
+  });
+
+  scenario("boundary matches a metric not impacted: no match", {
+    lexicon: [
+      `REGISTER boundary aov_redef AT 2026-01-01 IMPACTING average_order_value WITH "x"`,
+    ],
+    database: {
+      columns: ["total_sales"],
+      rows: [[100]],
+    },
+    query: "COMPUTE total_sales OVER 2025-Q4 to 2026-Q1",
+    expect: {
+      reconciliation: { count: 0 },
+      decorations: [{ matches: 0 }],
+    },
+  });
+});

@@ -29,20 +29,43 @@ export interface ComputeStatement {
 //                 [IMPACTING ... OVER ...]...
 //                 WITH <description-string>
 //
-// Each ImpactClause may carry multiple metrics (the multi-metric
-// shorthand) — the validator enforces that those metrics share a
-// primary time dimension. The parser stores the raw structure;
-// expansion to per-metric Impacts happens at execute time.
-export interface RegisterStatement {
+// REGISTER comes in multiple shapes, discriminated by `entryKind`.
+//
+// `region`: a patch of dimensional space (time interval + optional
+// categorical constraints) over which one or more metrics are affected.
+// May carry multiple IMPACTING clauses — the multi-metric shorthand
+// requires the listed metrics to share a primary time dimension.
+//
+// `boundary`: a cut at an instant that partitions the dimensional space.
+// A single AT date applies to all impacted metrics. Optional categorical
+// constraints scope the cut to a sub-population (e.g. "LTV calculation
+// changed Jan 1 for the government tier"). Triggers when a query's
+// computed value mixes inputs from both sides of the cut.
+export type RegisterStatement =
+  | RegisterRegionStatement
+  | RegisterBoundaryStatement;
+
+export interface RegisterRegionStatement {
   kind: "register";
-  // The lexicon entry kind being registered. Currently only "region";
-  // future work will add other shapes (e.g. "boundary" for cuts that
-  // partition the dimensional space rather than patches within it).
-  // Made explicit at parse time so the language can grow without a
-  // retroactive break.
   entryKind: "region";
   name: Identifier;
   impactClauses: ImpactClause[];
+  description: StringLiteral;
+  span: Span;
+}
+
+export interface RegisterBoundaryStatement {
+  kind: "register";
+  entryKind: "boundary";
+  name: Identifier;
+  // The instant the cut sits at. Day-form only for v1 (a quarter or
+  // month wouldn't be a literal cut — it's a range).
+  at: TimeLiteral;
+  // Optional categorical scoping for the cut (e.g. AND product_tier =
+  // 'government'). Empty array if the cut applies across all dim values.
+  constraints: Constraint[];
+  // Metrics affected by this cut. Single AT applies to all of them.
+  metrics: MetricRef[];
   description: StringLiteral;
   span: Span;
 }
