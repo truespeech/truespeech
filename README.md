@@ -10,7 +10,12 @@ This repository contains the **truespeech runtime** — a small, browser-friendl
 
 ## Status
 
-Three statements are implemented: `COMPUTE` for querying, plus `REGISTER` and `CHECK` for the **lexicon** — a queryable, reconcilable map of contextual knowledge about your data (anomalies, data-quality issues, known events). Reconciliation runs automatically against `COMPUTE`: if any lexicon entry overlaps the queried region, it surfaces alongside the result.
+Three statements are implemented: `COMPUTE` for querying, plus `REGISTER` and `CHECK` for the **lexicon** — a queryable, reconcilable map of contextual knowledge about your data. The lexicon supports two entry kinds:
+
+- **regions** — patches of data (a bot attack window, an outage, a known anomaly)
+- **boundaries** — cuts that partition the data (a metric redefinition, a pricing change)
+
+Reconciliation runs automatically against `COMPUTE`: if any lexicon entry applies to a given result value, it surfaces both at the query level (`result.reconciliation`) and per-row (`result.decorations`).
 
 ## Architecture
 
@@ -49,18 +54,27 @@ const result = await ts.execute(
 result.semanticQuery;   // the SemanticQuery the runtime built
 result.sql;             // the SQL the semantic layer generated
 result.results;         // the rows returned by the database
-result.reconciliation;  // any lexicon entries that overlap this region
+result.reconciliation;  // query-level lexicon matches
+result.decorations;     // per-row matches, index-aligned with results.rows
 
-// REGISTER — annotate the lexicon
+// REGISTER region — annotate a patch of data
 await ts.execute(`
   REGISTER region bot_campaign_2026_02
     IMPACTING total_sales, order_count OVER 2026-02-03 to 2026-02-04
     WITH "Credential-stuffing campaign inflated session and order counts"
 `);
 
+// REGISTER boundary — annotate a cut in time
+await ts.execute(`
+  REGISTER boundary ltv_redef_enterprise
+    AT 2026-01-01 AND product_tier = 'enterprise'
+    IMPACTING LTV
+    WITH "LTV calculation methodology changed for enterprise tier on Jan 1"
+`);
+
 // CHECK — query the lexicon directly
 const check = await ts.execute("CHECK total_sales OVER 2026-Q1");
-check.matches;          // [{ entry, impact, overlap }, ...]
+check.matches;          // discriminated union: RegionMatch | BoundaryMatch
 ```
 
 ## The COMPUTE statement
@@ -124,20 +138,27 @@ LIMIT 10
 
 ## The lexicon — REGISTER and CHECK
 
-The lexicon is a curated store of contextual knowledge about the data: known anomalies, data-quality issues, real-world events that distort metrics. Entries are *facts about the world* — a bot attack, a logging bug, a one-time promotional spike — and they record which metrics are affected and over what region.
+The lexicon is a curated store of contextual knowledge about the data: known anomalies, data-quality issues, real-world events that distort metrics, schema or definition changes. Entries are *facts about the world* — a bot attack, a logging bug, a one-time promotional spike, a metric methodology change — and they record which metrics are affected and where.
 
-### REGISTER
+The lexicon supports two entry kinds:
+
+- **region** — a *patch* in dimensional space. Data inside the patch is suspect or special.
+- **boundary** — a *cut* at an instant. Data on either side of the cut is fine in isolation, but mixing across it produces an incoherent value.
+
+Both kinds share the lexicon adapter, the auto-reconciliation surface in `COMPUTE`, and the per-row decoration model. They differ in trigger semantics (overlap vs. straddle) and in their syntactic shape.
+
+Descriptions on either kind are string literals — single-quoted (`'…'`) or double-quoted (`"…"`). Use double quotes for prose with apostrophes.
+
+### REGISTER region
 
 ```
-REGISTER <kind> <name>
+REGISTER region <name>
   IMPACTING <metric>[, <metric>...] OVER <region>
   [IMPACTING <metric>[, <metric>...] OVER <region>]...
   WITH "<description>"
 ```
 
-`<kind>` is the shape of lexicon entry being registered. Currently the only defined kind is `region` — a patch in the dimensional space (a time interval plus optional categorical constraints) over which one or more metrics are affected. The kind is required at parse time so future additions (e.g. `boundary` for a cut that partitions the space into before-and-after) slot in without a retroactive break.
-
-Each `IMPACTING` clause carries one or more affected metrics and the region (relative to *that* metric's primary time) over which they're affected. The multi-metric shorthand requires the listed metrics to share a primary time; if they don't, write a separate `IMPACTING` clause per metric.
+A region is a contiguous slice of the data — a time interval plus optional categorical constraints — over which one or more metrics are affected. Each `IMPACTING` clause carries one or more affected metrics and the region (relative to *that* metric's primary time) over which they're affected. The multi-metric shorthand requires the listed metrics to share a primary time; if they don't, write a separate `IMPACTING` clause per metric.
 
 ```
 REGISTER region bot_campaign_2026_02
@@ -150,7 +171,42 @@ REGISTER region mobile_event_drop
   WITH "Mobile app analytics events were not consistently fired"
 ```
 
-Descriptions are string literals — single-quoted (`'…'`) or double-quoted (`"…"`). Use double quotes for prose with apostrophes.
+A region triggers a result value when that value's underlying input rows came from inside the patch.
+
+### REGISTER boundary
+
+```
+REGISTER boundary <name>
+  AT <date> [AND <constraint>]...
+  IMPACTING <metric>[, <metric>...]
+  WITH "<description>"
+```
+
+A boundary is a cut at an instant — a metric redefinition, a pricing change, a logging-pipeline switch. `AT` takes a day-form date; year/quarter/month forms are rejected because boundaries are instants, not intervals. A single `AT` applies to all impacted metrics in the `IMPACTING` clause.
+
+Optional `AND` constraints scope the cut to a sub-population — e.g. for a metric change that affected only one segment:
+
+```
+REGISTER boundary ltv_redef_enterprise
+  AT 2026-01-01 AND product_tier = 'enterprise'
+  IMPACTING LTV
+  WITH "LTV calculation methodology changed for enterprise tier on Jan 1"
+```
+
+Multi-metric IMPACTING follows the same shared-primary-time rule as regions.
+
+#### Trigger semantics
+
+A boundary triggers a result value when that value's underlying inputs came from *both sides* of the cut — i.e. the value mixes pre-cut and post-cut data. The match is per-row, and group-by granularity is load-bearing in a useful way: an analyst who has already disambiguated to the right grain gets no annotation.
+
+| Query | Outcome |
+|---|---|
+| `COMPUTE LTV OVER 2025-Q4 to 2026-Q1` (no group-by) | one row, inputs span the cut → **flag** |
+| `COMPUTE LTV OVER 2025-Q4 to 2026-Q1 GROUP BY month` | six rows, each from a single month, none span Jan 1 → **no flag** (correctly disambiguated) |
+| `COMPUTE LTV OVER 2025-Q4 to 2026-Q1 GROUP BY quarter` | two rows (Q4, Q1), neither spans the cut → **no flag** |
+| `COMPUTE LTV OVER 2025-Q4 to 2026-Q1 GROUP BY product_tier` (cut scoped to enterprise) | only the `enterprise` row's slice straddles the scoped cut → **only enterprise flags** |
+
+Concretely: a row's interval `[start, end]` straddles the cut at `T` iff `start < T <= end`. The "<=" on the right makes "T is the first day of the new regime" the natural reading — a row that starts exactly at `T` contains only post-cut data and does not trigger.
 
 ### CHECK
 
@@ -168,35 +224,31 @@ CHECK total_sales OVER all time      -- unbounded form (OVER is required)
 
 `OVER` is always required — use `OVER all time` for the unscoped case. Multi-metric form requires shared primary time, same rule as multi-metric COMPUTE.
 
-The result has shape:
+Returns matches across both entry kinds. `LexiconMatch` is a discriminated union:
 
 ```typescript
 {
   statement: "check",
-  matches: [
-    {
-      entry,    // the full LexiconEntry
-      impact,   // the specific IMPACTING clause within entry that matched
-      overlap,  // ResolvedRegion: the actual intersection of CHECK × impact
-    },
-    ...
-  ]
+  matches: LexiconMatch[];   // RegionMatch | BoundaryMatch (see API below)
 }
 ```
 
-One match per matching IMPACTING clause — if an entry impacts multiple of your queried metrics and they all overlap, you get multiple matches with the same `entry` object.
+For region entries, you get one match per matching IMPACTING clause — if an entry impacts multiple of your queried metrics and they all overlap, you get multiple matches with the same `entry` object. For boundary entries, you get one match per (boundary, queried-metric) pair where the boundary applies to that metric and the query straddles its cut.
 
 ### Reconciliation in COMPUTE
 
-Every `COMPUTE` automatically runs the same matching logic against the lexicon. If any entry's IMPACTING clause for the queried metric overlaps the OVER region, it surfaces in `result.reconciliation`:
+Every `COMPUTE` automatically runs the same matching logic against the lexicon — both at the query level and per-row:
 
 ```typescript
 const r = await ts.execute("COMPUTE total_sales OVER 2026-02");
 r.results;          // the data
-r.reconciliation;   // any lexicon entries overlapping this region
+r.reconciliation;   // query-level lexicon matches (LexiconMatch[])
+r.decorations;      // per-row matches (RowDecoration[]), index-aligned with results.rows
 ```
 
-The `reconciliation` field has the same `LexiconMatch[]` shape as `CHECK.matches`, so you can render them the same way.
+`reconciliation` has the same `LexiconMatch[]` shape as `CHECK.matches`. `decorations[i]` is the subset of `reconciliation` that applies to result row `i`. An empty `matches` array on a `RowDecoration` means the row is unaffected.
+
+For regions, a row matches when its slice overlaps the impact region. For boundaries, a row matches when its slice straddles the cut (and is compatible with any categorical scope) — see [Trigger semantics](#trigger-semantics) above.
 
 ## API
 
@@ -228,28 +280,55 @@ interface ComputeResult {
   semanticQuery: SemanticQuery;       // what was built for the semantic layer
   sql: string;                        // what the semantic layer generated
   results: QueryResult;               // what the database returned
-  reconciliation: LexiconMatch[];     // overlapping lexicon entries
+  reconciliation: LexiconMatch[];     // query-level lexicon matches
+  region: ResolvedRegion;             // resolved OVER region the query addressed
+  decorations: RowDecoration[];       // per-row matches, index-aligned with results.rows
 }
 
 interface RegisterResult {
   statement: "register";
-  entry: LexiconEntry;                // the entry that was added
+  entry: LexiconEntry;                // the entry that was added (region or boundary)
 }
 
 interface CheckResult {
   statement: "check";
-  matches: LexiconMatch[];            // entries with overlapping IMPACTING clauses
+  matches: LexiconMatch[];            // matches across both entry kinds
+}
+
+// LexiconMatch is discriminated by `kind`.
+type LexiconMatch = RegionMatch | BoundaryMatch;
+
+interface RegionMatch {
+  kind: "region";
+  entry: RegionLexiconEntry;
+  impact: Impact;                     // the IMPACTING clause that matched
+  overlap: ResolvedRegion;            // intersection of query × impact
+}
+
+interface BoundaryMatch {
+  kind: "boundary";
+  entry: BoundaryLexiconEntry;
+  metric: string;                     // the impacted metric the match was found for
+  crossedAt: string;                  // ISO date — the boundary's AT
+}
+
+interface RowDecoration {
+  matches: LexiconMatch[];            // subset of reconciliation that apply to this row
 }
 ```
 
 ### Region utilities
 
-The runtime exports a small set of pure functions for working with `ResolvedRegion`:
+The runtime exports a small set of pure functions for working with regions and per-row matching:
 
 - `resolveRegion(over, primaryTimeFieldName): ResolvedRegion` — turn an AST `OverClause` into a date interval + constraints.
 - `intersectRegions(a, b): ResolvedRegion | null` — compute the overlap of two regions; null if their time intervals don't intersect.
 - `renderTimeRegion(start, end): string` — pretty-print a date interval at the coarsest unit at which both endpoints align (e.g. `[2026-01-01, 2026-12-31]` → `"2026"`, `[2026-02-01, 2026-04-30]` → `"2026-02 to 2026-04"`).
 - `renderRegion(region): string` — same, plus categorical constraints joined with `AND`.
+- `buildRowRegion(row, groupBys, queryRegion): RowRegion` — derive a result row's effective slice from the query region and any group-by columns.
+- `rowMatchesImpact(rowRegion, impactRegion): boolean` — does the row's slice overlap an impact region? (region-match test)
+- `crossesBoundary(rowRegion, { at, constraints }): boolean` — does the row's slice straddle the cut and is its predicate space compatible with the boundary's scope? (boundary-match test)
+- `decorationsFor(rows, matches, groupBys, queryRegion): RowDecoration[]` — wire the above into per-row decoration arrays. Used internally by `executeCompute` to populate `ComputeResult.decorations`; exported for callers that want to compute decorations against alternative match sets.
 
 ### Errors
 
@@ -308,19 +387,33 @@ interface LexiconAdapter {
   list(): Promise<LexiconEntry[]>;
 }
 
-interface LexiconEntry {
+// LexiconEntry is discriminated by `kind`. The adapter stores both
+// shapes uniformly; the runtime dispatches on kind during matching.
+type LexiconEntry = RegionLexiconEntry | BoundaryLexiconEntry;
+
+interface RegionLexiconEntry {
+  kind: "region";
   name: string;
-  impacts: Impact[];        // one per IMPACTING clause, post-expansion
+  impacts: Impact[];                  // one per IMPACTING clause, post-expansion
+  description: string;
+}
+
+interface BoundaryLexiconEntry {
+  kind: "boundary";
+  name: string;
+  at: string;                         // ISO YYYY-MM-DD, the cut's instant
+  constraints: ResolvedConstraint[];  // categorical scope (empty = all dim values)
+  metrics: string[];                  // impacted metrics
   description: string;
 }
 
 interface Impact {
   metric: string;
-  region: ResolvedRegion;   // time interval + categorical constraints
+  region: ResolvedRegion;             // time interval + categorical constraints
 }
 ```
 
-The adapter is a simple add/list pair — the runtime does all the matching and overlap math in `LexiconMatch[]` form. Bring your own storage (in-memory, SQLite, a database table); duplicate names are allowed at the adapter level.
+The adapter is a simple add/list pair — the runtime does all the matching and overlap/crossing math itself in `LexiconMatch[]` form. Bring your own storage (in-memory, SQLite, a database table); duplicate names are allowed at the adapter level.
 
 ### OSI adapter
 
