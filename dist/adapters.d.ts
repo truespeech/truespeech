@@ -58,6 +58,12 @@ export interface BoundaryLexiconEntry {
     at: string;
     constraints: ResolvedConstraint[];
     metrics: string[];
+    before: RegimeDescription;
+    after: RegimeDescription;
+    changeDescription?: string;
+}
+export interface RegimeDescription {
+    label: string;
     description: string;
 }
 export interface Impact {
@@ -81,14 +87,21 @@ export interface RegionMatch {
     impact: Impact;
     overlap: ResolvedRegion;
 }
+export type BoundarySide = "before" | "after" | "straddles";
 export interface BoundaryMatch {
     kind: "boundary";
     entry: BoundaryLexiconEntry;
     metric: string;
     crossedAt: string;
+    side: BoundarySide;
 }
 export interface RowDecoration {
     matches: LexiconMatch[];
+    severity?: "warn" | "error";
+}
+export interface HistoricalNote {
+    boundary: BoundaryLexiconEntry;
+    metric: string;
 }
 export interface LexiconAdapter {
     add(entry: LexiconEntry): Promise<void>;

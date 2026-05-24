@@ -246,12 +246,23 @@ class Parser {
             this.errorHere("expected_token", "Expected at least one metric after IMPACTING");
             return null;
         }
-        if (!this.expect("keyword", "with", "expected_token", "Expected WITH after IMPACTING clause", "REGISTER boundary requires a WITH <description> clause")) {
+        // BEFORE "<label>" "<description>" — mandatory regime description.
+        const before = this.parseRegimeClause("before");
+        if (!before)
             return null;
+        // AFTER "<label>" "<description>" — mandatory regime description.
+        const after = this.parseRegimeClause("after");
+        if (!after)
+            return null;
+        // Optional WITH "<change>" — overrides the runtime-composed change
+        // sentence in straddling/spanning footers.
+        let changeDescription;
+        if (this.matchKeyword("with")) {
+            const desc = this.parseStringLiteral();
+            if (!desc)
+                return null;
+            changeDescription = desc;
         }
-        const description = this.parseStringLiteral();
-        if (!description)
-            return null;
         this.matchPunct(";"); // optional terminator
         if (!this.isAtEnd()) {
             const tok = this.peek();
@@ -265,8 +276,32 @@ class Parser {
             at,
             constraints,
             metrics,
-            description,
+            before,
+            after,
+            changeDescription,
             span: spanFrom(registerTok.span, lastTok.span ?? registerTok.span),
+        };
+    }
+    // Parse `<keyword> "<label>" "<description>"`. `keyword` is "before"
+    // or "after"; both clauses are mandatory on REGISTER boundary in v0.3.0.
+    parseRegimeClause(keyword) {
+        const kwTok = this.expect("keyword", keyword, "expected_token", `Expected ${keyword.toUpperCase()} clause`, `REGISTER boundary requires both BEFORE and AFTER clauses, each followed by a short label and a description string.`);
+        if (!kwTok)
+            return null;
+        const label = this.parseStringLiteral();
+        if (!label)
+            return null;
+        const description = this.parseStringLiteral();
+        if (!description) {
+            // parseStringLiteral has already emitted an error; add a hint so
+            // it's clear two strings are expected.
+            this.errorAt(label.span, "expected_token", `${keyword.toUpperCase()} expects a short label string followed by a longer description string`);
+            return null;
+        }
+        return {
+            label,
+            description,
+            span: spanFrom(kwTok.span, description.span),
         };
     }
     parseImpactClause() {

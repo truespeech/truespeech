@@ -40,6 +40,8 @@ import type {
   DimensionInfo,
   ResolvedRegion,
   RowDecoration,
+  HistoricalNote,
+  BoundaryLexiconEntry,
 } from "./adapters.js";
 import {
   resolveRegion,
@@ -74,6 +76,12 @@ export interface ComputeResult {
   // specific row's slice of the data. An empty `matches` array means
   // the row is unaffected.
   decorations: RowDecoration[];
+  // Historical-context notes: emitted when the query falls entirely on
+  // the pre-cut side of one or more boundaries impacting the metric.
+  // The numbers are internally consistent under the pre-cut regime; the
+  // notes surface that the operator is reading history, and what the
+  // post-cut "now" regime looks like.
+  historicalNotes: HistoricalNote[];
 }
 
 export interface RegisterResult {
@@ -199,6 +207,14 @@ async function executeCompute(
     region
   );
 
+  // 9. Historical-note detection: boundaries that the query falls
+  //    entirely behind (queryEnd < boundary.at). The values aren't
+  //    flagged — they're internally consistent under the pre-cut regime
+  //    — but the operator should be told they're reading history.
+  const historicalNotes = lexicon
+    ? await computeHistoricalNotes(metric.name, region, lexicon)
+    : [];
+
   return {
     statement: "compute",
     semanticQuery,
@@ -207,6 +223,7 @@ async function executeCompute(
     reconciliation,
     region,
     decorations,
+    historicalNotes,
   };
 }
 
@@ -264,7 +281,15 @@ async function executeRegister(
     at,
     constraints,
     metrics,
-    description: stmt.description.value,
+    before: {
+      label: stmt.before.label.value,
+      description: stmt.before.description.value,
+    },
+    after: {
+      label: stmt.after.label.value,
+      description: stmt.after.description.value,
+    },
+    changeDescription: stmt.changeDescription?.value,
   };
 
   await lexicon.add(entry);
@@ -313,12 +338,82 @@ async function executeCheck(
           entry,
           metric: metricRef.name,
           crossedAt: entry.at,
+          side: "straddles",
         });
       }
     }
   }
 
   return { statement: "check", matches };
+}
+
+// ===== Historical-note detection (used by COMPUTE) =====
+//
+// For each boundary impacting the metric where the query falls entirely
+// behind the cut, emit a historical note. The values themselves are
+// internally consistent (one pre-cut regime), so no row-level flag, but
+// the operator is reading history and should be told what "now" looks
+// like compared to what they're seeing.
+
+async function computeHistoricalNotes(
+  metric: string,
+  queryRegion: ResolvedRegion,
+  lexicon: LexiconAdapter
+): Promise<HistoricalNote[]> {
+  const entries = await lexicon.list();
+  const notes: HistoricalNote[] = [];
+  // Virtual row for the scope check — picks up the query's equality
+  // constraints as dim values.
+  const virtualRow = buildRowRegion([], [], queryRegion);
+  for (const entry of entries) {
+    if (entry.kind !== "boundary") continue;
+    if (!entry.metrics.includes(metric)) continue;
+    // Entirely pre-cut: the latest day the query touches is before the cut.
+    if (!(queryRegion.timeEnd < entry.at)) continue;
+    // Categorical scope: if the query pins a dim incompatibly with the
+    // boundary's scope, the boundary doesn't apply.
+    if (!isBoundaryScopeCompatible(virtualRow, entry)) continue;
+    notes.push({ boundary: entry, metric });
+  }
+  return notes;
+}
+
+function isBoundaryScopeCompatible(
+  row: { dimValues: Record<string, string | number> },
+  boundary: BoundaryLexiconEntry
+): boolean {
+  for (const c of boundary.constraints) {
+    const rowVal = row.dimValues[c.dimension];
+    if (rowVal === undefined) continue;
+    if (!constraintAllowsValueLocal(c, rowVal)) return false;
+  }
+  return true;
+}
+
+// Local copy of constraint-value compatibility (avoids exporting the
+// helper from region.ts purely for one call site).
+function constraintAllowsValueLocal(
+  c: import("./adapters.js").ResolvedConstraint,
+  val: string | number
+): boolean {
+  switch (c.operator) {
+    case "=":
+      return val === c.value;
+    case "!=":
+      return val !== c.value;
+    case ">":
+      return (val as string | number) > (c.value as string | number);
+    case "<":
+      return (val as string | number) < (c.value as string | number);
+    case ">=":
+      return (val as string | number) >= (c.value as string | number);
+    case "<=":
+      return (val as string | number) <= (c.value as string | number);
+    case "in":
+      return Array.isArray(c.value) && c.value.includes(val);
+    case "not_in":
+      return Array.isArray(c.value) && !c.value.includes(val);
+  }
 }
 
 // ===== Reconciliation (used by COMPUTE) =====
@@ -350,6 +445,7 @@ async function reconcile(
         entry,
         metric,
         crossedAt: entry.at,
+        side: "straddles",
       });
     }
   }

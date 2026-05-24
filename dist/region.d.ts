@@ -1,5 +1,5 @@
 import type { OverClause, TimeLiteral, Constraint, Grain } from "./ast.js";
-import type { ResolvedRegion, ResolvedConstraint, LexiconMatch, RowDecoration, GroupByClause } from "./adapters.js";
+import type { ResolvedRegion, ResolvedConstraint, LexiconMatch, BoundaryLexiconEntry, BoundarySide, RowDecoration, GroupByClause } from "./adapters.js";
 export declare function resolveRegion(over: OverClause, primaryTimeField: string | null): ResolvedRegion;
 export declare function resolveConstraint(c: Constraint): ResolvedConstraint;
 export declare function intersectRegions(a: ResolvedRegion, b: ResolvedRegion): ResolvedRegion | null;
@@ -22,4 +22,5 @@ export declare function crossesBoundary(row: RowRegion, boundary: {
     at: string;
     constraints: ResolvedConstraint[];
 }): boolean;
+export declare function classifyRowAgainstBoundary(row: RowRegion, boundary: BoundaryLexiconEntry): BoundarySide | null;
 export declare function decorationsFor(rows: (string | number | null)[][], matches: LexiconMatch[], groupBys: GroupByClause[], queryRegion: ResolvedRegion): RowDecoration[];

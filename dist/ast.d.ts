@@ -25,6 +25,13 @@ export interface RegisterBoundaryStatement {
     at: TimeLiteral;
     constraints: Constraint[];
     metrics: MetricRef[];
+    before: RegimeDescription;
+    after: RegimeDescription;
+    changeDescription?: StringLiteral;
+    span: Span;
+}
+export interface RegimeDescription {
+    label: StringLiteral;
     description: StringLiteral;
     span: Span;
 }

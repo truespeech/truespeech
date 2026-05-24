@@ -64,11 +64,18 @@ export type {
   DatabaseAdapter,
   LexiconAdapter,
   LexiconEntry,
+  RegionLexiconEntry,
+  BoundaryLexiconEntry,
+  RegimeDescription,
   Impact,
   ResolvedRegion,
   ResolvedConstraint,
   LexiconMatch,
+  RegionMatch,
+  BoundaryMatch,
+  BoundarySide,
   RowDecoration,
+  HistoricalNote,
   MetricInfo,
   DimensionInfo,
   SemanticQuery,
@@ -112,6 +119,7 @@ export {
   buildRowRegion,
   rowMatchesImpact,
   crossesBoundary,
+  classifyRowAgainstBoundary,
   decorationsFor,
 } from "./region.js";
 export type { RowRegion } from "./region.js";
@@ -186,4 +194,4 @@ export class TrueSpeech {
   }
 }
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.3.0";

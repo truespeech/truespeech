@@ -352,6 +352,32 @@ export function crossesBoundary(row, boundary) {
     }
     return true;
 }
+// Classify a row's time interval against a boundary cut, returning null
+// if the row falls outside the boundary's categorical scope (in which
+// case the boundary does not apply at all) and one of three sides
+// otherwise:
+//   "before"    — row's interval is entirely pre-cut (end < at)
+//   "after"     — row's interval is at-or-after the cut (start >= at)
+//   "straddles" — row spans the cut (start < at <= end); value mixes
+//                 pre-cut and post-cut inputs.
+//
+// Used both for per-row decoration in COMPUTE (when the query as a
+// whole spans the cut, every row in the result still needs its own
+// regime context surfaced) and for historical-note detection.
+export function classifyRowAgainstBoundary(row, boundary) {
+    for (const c of boundary.constraints) {
+        const rowVal = row.dimValues[c.dimension];
+        if (rowVal === undefined)
+            continue; // row aggregates this dim
+        if (!constraintAllowsValue(c, rowVal))
+            return null;
+    }
+    if (row.timeEnd < boundary.at)
+        return "before";
+    if (row.timeStart >= boundary.at)
+        return "after";
+    return "straddles";
+}
 function constraintAllowsValue(c, val) {
     switch (c.operator) {
         case "=":
@@ -378,13 +404,31 @@ export function decorationsFor(rows, matches, groupBys, queryRegion) {
     }
     return rows.map((row) => {
         const rowRegion = buildRowRegion(row, groupBys, queryRegion);
-        const hits = matches.filter((m) => {
+        const hits = [];
+        let severity;
+        for (const m of matches) {
             if (m.kind === "region") {
-                return rowMatchesImpact(rowRegion, m.impact.region);
+                if (!rowMatchesImpact(rowRegion, m.impact.region))
+                    continue;
+                hits.push(m);
+                severity = severity ?? "warn";
             }
-            // boundary
-            return crossesBoundary(rowRegion, m.entry);
-        });
-        return { matches: hits };
+            else {
+                // Boundary. Reconciliation only included this entry because the
+                // query as a whole straddles the cut. Per row, classify into
+                // before / after / straddles and emit a row-scoped variant of
+                // the match with the row's actual side. Rows outside the
+                // categorical scope of the boundary get nothing.
+                const side = classifyRowAgainstBoundary(rowRegion, m.entry);
+                if (side === null)
+                    continue;
+                hits.push({ ...m, side });
+                if (side === "straddles")
+                    severity = "error";
+                else if (severity !== "error")
+                    severity = "warn";
+            }
+        }
+        return severity === undefined ? { matches: hits } : { matches: hits, severity };
     });
 }

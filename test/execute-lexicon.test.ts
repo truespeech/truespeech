@@ -128,7 +128,7 @@ describe("execute REGISTER", () => {
     const lexicon = mockLexicon();
     const result = (await execute(
       ast(
-        `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING total_sales WITH "calc changed"`
+        `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING total_sales BEFORE "old" "v1 calc" AFTER "new" "v2 calc"`
       ),
       {
         semanticLayer: retailSalesMock(),
@@ -139,11 +139,19 @@ describe("execute REGISTER", () => {
 
     assert.equal(result.entry.kind, "boundary");
     assert.equal(result.entry.name, "metric_redef");
-    assert.equal(result.entry.description, "calc changed");
     if (result.entry.kind !== "boundary") throw new Error("not boundary");
     assert.equal(result.entry.at, "2026-01-01");
     assert.deepEqual(result.entry.metrics, ["total_sales"]);
     assert.equal(result.entry.constraints.length, 0);
+    assert.deepEqual(result.entry.before, {
+      label: "old",
+      description: "v1 calc",
+    });
+    assert.deepEqual(result.entry.after, {
+      label: "new",
+      description: "v2 calc",
+    });
+    assert.equal(result.entry.changeDescription, undefined);
     assert.equal(lexicon.entries.length, 1);
   });
 
@@ -151,7 +159,7 @@ describe("execute REGISTER", () => {
     const lexicon = mockLexicon();
     const result = (await execute(
       ast(
-        `REGISTER boundary pricing_change AT 2026-01-01 IMPACTING total_sales, average_order_value WITH "x"`
+        `REGISTER boundary pricing_change AT 2026-01-01 IMPACTING total_sales, average_order_value BEFORE "a" "x" AFTER "b" "y"`
       ),
       {
         semanticLayer: retailSalesMock(),
@@ -171,7 +179,7 @@ describe("execute REGISTER", () => {
     const lexicon = mockLexicon();
     const result = (await execute(
       ast(
-        `REGISTER boundary x AT 2026-01-01 AND product_tier = 'enterprise' IMPACTING total_sales WITH "x"`
+        `REGISTER boundary x AT 2026-01-01 AND product_tier = 'enterprise' IMPACTING total_sales BEFORE "a" "x" AFTER "b" "y"`
       ),
       {
         semanticLayer: retailSalesMock(),
@@ -184,6 +192,22 @@ describe("execute REGISTER", () => {
     assert.deepEqual(result.entry.constraints, [
       { dimension: "product_tier", operator: "=", value: "enterprise" },
     ]);
+  });
+
+  it("captures optional WITH override for change-description footer", async () => {
+    const lexicon = mockLexicon();
+    const result = (await execute(
+      ast(
+        `REGISTER boundary x AT 2026-01-01 IMPACTING total_sales BEFORE "a" "x" AFTER "b" "y" WITH "hand-written change"`
+      ),
+      {
+        semanticLayer: retailSalesMock(),
+        database: mockDatabase(),
+        lexicon,
+      }
+    )) as RegisterResult;
+    if (result.entry.kind !== "boundary") throw new Error("not boundary");
+    assert.equal(result.entry.changeDescription, "hand-written change");
   });
 });
 

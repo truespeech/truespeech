@@ -66,7 +66,21 @@ export interface RegisterBoundaryStatement {
   constraints: Constraint[];
   // Metrics affected by this cut. Single AT applies to all of them.
   metrics: MetricRef[];
-  description: StringLiteral;
+  // Mandatory regime descriptions. Two string literals each: a short
+  // label (rendered inline in tables) and a long-form description
+  // (rendered in reconciliation/historical footers).
+  before: RegimeDescription;
+  after: RegimeDescription;
+  // Optional WITH "<change>": overrides the runtime-composed change
+  // sentence in straddling/spanning footers. When absent, the runtime
+  // composes the wording from `before` and `after`.
+  changeDescription?: StringLiteral;
+  span: Span;
+}
+
+export interface RegimeDescription {
+  label: StringLiteral;       // short — e.g. "old definition"
+  description: StringLiteral; // long-form prose
   span: Span;
 }
 

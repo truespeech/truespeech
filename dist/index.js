@@ -12,7 +12,7 @@ import { execute as executeAst } from "./execute.js";
 import { TrueSpeechExecutionError } from "./errors.js";
 export { TrueSpeechExecutionError, renderError, renderErrors, } from "./errors.js";
 export { resultColumnNames } from "./validate.js";
-export { resolveRegion, intersectRegions, renderRegion, renderTimeRegion, formatTimeBucket, endOfBucket, buildRowRegion, rowMatchesImpact, crossesBoundary, decorationsFor, } from "./region.js";
+export { resolveRegion, intersectRegions, renderRegion, renderTimeRegion, formatTimeBucket, endOfBucket, buildRowRegion, rowMatchesImpact, crossesBoundary, classifyRowAgainstBoundary, decorationsFor, } from "./region.js";
 export { osiAdapter } from "./osi-adapter.js";
 export class TrueSpeech {
     opts;
@@ -62,4 +62,4 @@ export class TrueSpeech {
         });
     }
 }
-export const VERSION = "0.1.0";
+export const VERSION = "0.3.0";

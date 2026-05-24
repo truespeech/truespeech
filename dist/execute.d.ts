@@ -1,5 +1,5 @@
 import type { Statement } from "./ast.js";
-import type { SemanticLayerAdapter, DatabaseAdapter, LexiconAdapter, LexiconEntry, LexiconMatch, SemanticQuery, QueryResult, ResolvedRegion, RowDecoration } from "./adapters.js";
+import type { SemanticLayerAdapter, DatabaseAdapter, LexiconAdapter, LexiconEntry, LexiconMatch, SemanticQuery, QueryResult, ResolvedRegion, RowDecoration, HistoricalNote } from "./adapters.js";
 export interface ExecuteOpts {
     semanticLayer: SemanticLayerAdapter;
     database: DatabaseAdapter;
@@ -14,6 +14,7 @@ export interface ComputeResult {
     reconciliation: LexiconMatch[];
     region: ResolvedRegion;
     decorations: RowDecoration[];
+    historicalNotes: HistoricalNote[];
 }
 export interface RegisterResult {
     statement: "register";

@@ -107,9 +107,9 @@ describe("parse REGISTER — minimal", () => {
 // ===========================================================================
 
 describe("parse REGISTER boundary — minimal", () => {
-  it("parses bare AT + IMPACTING + WITH", () => {
+  it("parses bare AT + IMPACTING + BEFORE + AFTER", () => {
     const ast = register(
-      `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING average_order_value WITH "AOV calc changed"`
+      `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING average_order_value BEFORE "old" "AOV included returns" AFTER "new" "AOV excludes returns"`
     );
     assert.equal(ast.entryKind, "boundary");
     assert.equal(ast.name.name, "metric_redef");
@@ -121,12 +121,16 @@ describe("parse REGISTER boundary — minimal", () => {
     assert.equal(b.constraints.length, 0);
     assert.equal(b.metrics.length, 1);
     assert.equal(b.metrics[0].name, "average_order_value");
-    assert.equal(b.description.value, "AOV calc changed");
+    assert.equal(b.before.label.value, "old");
+    assert.equal(b.before.description.value, "AOV included returns");
+    assert.equal(b.after.label.value, "new");
+    assert.equal(b.after.description.value, "AOV excludes returns");
+    assert.equal(b.changeDescription, undefined);
   });
 
   it("parses AT with multiple impacted metrics", () => {
     const ast = register(
-      `REGISTER boundary pricing_change AT 2026-01-01 IMPACTING total_sales, average_order_value WITH "x"`
+      `REGISTER boundary pricing_change AT 2026-01-01 IMPACTING total_sales, average_order_value BEFORE "a" "x" AFTER "b" "y"`
     );
     const b = ast as RegisterBoundaryStatement;
     assert.equal(b.metrics.length, 2);
@@ -139,7 +143,8 @@ describe("parse REGISTER boundary — minimal", () => {
       `REGISTER boundary ltv_gov_redef
          AT 2026-01-01 AND product_tier = 'government'
          IMPACTING LTV
-         WITH "LTV redefined for government tier"`
+         BEFORE "old" "LTV under gov-tier pricing v1"
+         AFTER "new" "LTV under gov-tier pricing v2"`
     );
     const b = ast as RegisterBoundaryStatement;
     assert.equal(b.constraints.length, 1);
@@ -148,15 +153,23 @@ describe("parse REGISTER boundary — minimal", () => {
 
   it("parses AT with multiple AND constraints", () => {
     const ast = register(
-      `REGISTER boundary x AT 2026-01-01 AND region = 'northeast' AND product_tier = 'enterprise' IMPACTING total_sales WITH "x"`
+      `REGISTER boundary x AT 2026-01-01 AND region = 'northeast' AND product_tier = 'enterprise' IMPACTING total_sales BEFORE "a" "x" AFTER "b" "y"`
     );
     const b = ast as RegisterBoundaryStatement;
     assert.equal(b.constraints.length, 2);
   });
 
+  it("captures optional WITH override for the change-description footer", () => {
+    const ast = register(
+      `REGISTER boundary x AT 2026-01-01 IMPACTING total_sales BEFORE "a" "x" AFTER "b" "y" WITH "hand-written change sentence"`
+    );
+    const b = ast as RegisterBoundaryStatement;
+    assert.equal(b.changeDescription?.value, "hand-written change sentence");
+  });
+
   it("is case-insensitive on keywords", () => {
     register(
-      `register boundary x at 2026-01-01 impacting total_sales with "x"`
+      `register boundary x at 2026-01-01 impacting total_sales before "a" "x" after "b" "y"`
     );
   });
 });
@@ -164,7 +177,7 @@ describe("parse REGISTER boundary — minimal", () => {
 describe("parse REGISTER boundary — errors", () => {
   it("errors when AT is missing", () => {
     const r = parseSrc(
-      `REGISTER boundary x IMPACTING total_sales WITH "x"`
+      `REGISTER boundary x IMPACTING total_sales BEFORE "a" "x" AFTER "b" "y"`
     );
     assert.ok(r.errors.length > 0);
     assert.match(r.errors[0].message, /AT/i);
@@ -172,23 +185,31 @@ describe("parse REGISTER boundary — errors", () => {
 
   it("errors when IMPACTING is missing", () => {
     const r = parseSrc(
-      `REGISTER boundary x AT 2026-01-01 WITH "x"`
+      `REGISTER boundary x AT 2026-01-01 BEFORE "a" "x" AFTER "b" "y"`
     );
     assert.ok(r.errors.length > 0);
     assert.match(r.errors[0].message, /IMPACTING/i);
   });
 
-  it("errors when WITH is missing", () => {
+  it("errors when BEFORE is missing", () => {
     const r = parseSrc(
-      `REGISTER boundary x AT 2026-01-01 IMPACTING total_sales`
+      `REGISTER boundary x AT 2026-01-01 IMPACTING total_sales AFTER "b" "y"`
     );
     assert.ok(r.errors.length > 0);
-    assert.match(r.errors[0].message, /WITH/i);
+    assert.match(r.errors[0].message, /BEFORE/i);
+  });
+
+  it("errors when AFTER is missing", () => {
+    const r = parseSrc(
+      `REGISTER boundary x AT 2026-01-01 IMPACTING total_sales BEFORE "a" "x"`
+    );
+    assert.ok(r.errors.length > 0);
+    assert.match(r.errors[0].message, /AFTER/i);
   });
 
   it("errors when name is missing", () => {
     const r = parseSrc(
-      `REGISTER boundary AT 2026-01-01 IMPACTING total_sales WITH "x"`
+      `REGISTER boundary AT 2026-01-01 IMPACTING total_sales BEFORE "a" "x" AFTER "b" "y"`
     );
     assert.ok(r.errors.length > 0);
   });

@@ -20,6 +20,11 @@ interface RowExpect {
   matches: number;
   // Optional: which entry names should match (order-insensitive).
   entryNames?: string[];
+  // Optional: row-level severity. Undefined means "no matches".
+  severity?: "warn" | "error";
+  // Optional: boundary sides ordered by their position in matches[].
+  // Used to assert per-row regime classification.
+  boundarySides?: ("before" | "after" | "straddles")[];
 }
 
 interface ScenarioExpect {
@@ -28,6 +33,10 @@ interface ScenarioExpect {
     entryNames?: string[];
   };
   decorations?: RowExpect[];
+  historicalNotes?: {
+    count: number;
+    entryNames?: string[];
+  };
 }
 
 interface ScenarioConfig {
@@ -100,6 +109,36 @@ function scenario(name: string, config: ScenarioConfig): void {
             `Row ${i}: entry names`
           );
         }
+        if (expRow.severity !== undefined) {
+          assert.equal(
+            actual.severity,
+            expRow.severity,
+            `Row ${i}: severity`
+          );
+        }
+        if (expRow.boundarySides) {
+          const actualSides = actual.matches
+            .filter((m) => m.kind === "boundary")
+            .map((m) => (m as { side: string }).side);
+          assert.deepEqual(
+            actualSides,
+            expRow.boundarySides,
+            `Row ${i}: boundary sides`
+          );
+        }
+      }
+    }
+
+    if (config.expect.historicalNotes) {
+      const exp = config.expect.historicalNotes;
+      assert.equal(
+        result.historicalNotes.length,
+        exp.count,
+        `Expected ${exp.count} historical notes, got ${result.historicalNotes.length}`
+      );
+      if (exp.entryNames) {
+        const actual = result.historicalNotes.map((n) => n.boundary.name).sort();
+        assert.deepEqual(actual, [...exp.entryNames].sort());
       }
     }
   });
@@ -200,9 +239,15 @@ describe("scenarios — harness sanity", () => {
 // ===========================================================================
 
 describe("scenarios — boundaries", () => {
-  scenario("ungrouped query straddling the cut: single row flags", {
+  // v0.3.0 trigger matrix:
+  //   entirely post-cut   → silent (no reconciliation, no historical)
+  //   entirely pre-cut    → historical note; no row decorations
+  //   spans cut, all rows clean on one side → warn on each row, side label
+  //   spans cut, ≥1 straddling row          → error on straddler, warn on clean
+
+  scenario("ungrouped query straddling the cut: single row errors", {
     lexicon: [
-      `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING total_sales WITH "calc changed"`,
+      `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING total_sales BEFORE "old" "v1" AFTER "new" "v2"`,
     ],
     database: {
       columns: ["total_sales"],
@@ -211,13 +256,21 @@ describe("scenarios — boundaries", () => {
     query: "COMPUTE total_sales OVER 2025-Q4 to 2026-Q1",
     expect: {
       reconciliation: { count: 1, entryNames: ["metric_redef"] },
-      decorations: [{ matches: 1, entryNames: ["metric_redef"] }],
+      decorations: [
+        {
+          matches: 1,
+          entryNames: ["metric_redef"],
+          severity: "error",
+          boundarySides: ["straddles"],
+        },
+      ],
+      historicalNotes: { count: 0 },
     },
   });
 
-  scenario("query entirely before the cut: no match at all", {
+  scenario("query entirely before the cut: historical note, no row flags", {
     lexicon: [
-      `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING total_sales WITH "x"`,
+      `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING total_sales BEFORE "old" "v1" AFTER "new" "v2"`,
     ],
     database: {
       columns: ["total_sales"],
@@ -227,14 +280,32 @@ describe("scenarios — boundaries", () => {
     expect: {
       reconciliation: { count: 0 },
       decorations: [{ matches: 0 }],
+      historicalNotes: { count: 1, entryNames: ["metric_redef"] },
     },
   });
 
-  scenario("group-by month disambiguates: only crossing rows flag", {
-    // Cut is mid-month (2026-01-15). Only the January row's bucket
-    // straddles it; Dec is entirely before, Feb entirely after.
+  scenario("query entirely after the cut: silent — no notes at all", {
+    // Post-cut is the operator's "now"; no annotation needed.
     lexicon: [
-      `REGISTER boundary mid_month_cut AT 2026-01-15 IMPACTING total_sales WITH "x"`,
+      `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING total_sales BEFORE "old" "v1" AFTER "new" "v2"`,
+    ],
+    database: {
+      columns: ["total_sales"],
+      rows: [[100]],
+    },
+    query: "COMPUTE total_sales OVER 2026-Q1",
+    expect: {
+      reconciliation: { count: 0 },
+      decorations: [{ matches: 0 }],
+      historicalNotes: { count: 0 },
+    },
+  });
+
+  scenario("group-by month, mid-month cut: straddling row errors, others warn", {
+    // Cut is mid-month (2026-01-15). The January row's bucket straddles
+    // it; Dec is entirely before (warn), Feb entirely after (warn).
+    lexicon: [
+      `REGISTER boundary mid_month_cut AT 2026-01-15 IMPACTING total_sales BEFORE "old" "v1" AFTER "new" "v2"`,
     ],
     database: {
       columns: ["month", "total_sales"],
@@ -248,21 +319,19 @@ describe("scenarios — boundaries", () => {
     expect: {
       reconciliation: { count: 1 },
       decorations: [
-        { matches: 0 }, // Dec
-        { matches: 1, entryNames: ["mid_month_cut"] }, // Jan
-        { matches: 0 }, // Feb
+        { matches: 1, severity: "warn", boundarySides: ["before"] }, // Dec
+        { matches: 1, severity: "error", boundarySides: ["straddles"] }, // Jan
+        { matches: 1, severity: "warn", boundarySides: ["after"] }, // Feb
       ],
     },
   });
 
-  scenario("group-by month with cut at month boundary: no row flags", {
-    // Cut at exactly 2026-01-01, group by month → Dec is entirely
-    // before, Jan starts at the cut and contains only post-cut data.
-    // Neither row mixes. Per-row decorations are clean — but the query
-    // as a whole still straddles the cut so the query-level
-    // reconciliation registers a match.
+  scenario("group-by month with cut at month boundary: warn on each row", {
+    // Cut at exactly 2026-01-01. Dec is entirely before (warn), Jan is
+    // entirely after (warn). No row straddles, so no error — but the
+    // query as a whole spans the cut so each row carries regime context.
     lexicon: [
-      `REGISTER boundary clean_cut AT 2026-01-01 IMPACTING total_sales WITH "x"`,
+      `REGISTER boundary clean_cut AT 2026-01-01 IMPACTING total_sales BEFORE "old" "v1" AFTER "new" "v2"`,
     ],
     database: {
       columns: ["month", "total_sales"],
@@ -274,16 +343,20 @@ describe("scenarios — boundaries", () => {
     query: "COMPUTE total_sales OVER 2025-12 to 2026-01 GROUP BY month",
     expect: {
       reconciliation: { count: 1 },
-      decorations: [{ matches: 0 }, { matches: 0 }],
+      decorations: [
+        { matches: 1, severity: "warn", boundarySides: ["before"] },
+        { matches: 1, severity: "warn", boundarySides: ["after"] },
+      ],
     },
   });
 
-  scenario("categorically scoped boundary only flags the matching row", {
+  scenario("categorically scoped boundary only annotates rows in scope", {
     lexicon: [
       `REGISTER boundary ltv_gov_redef
          AT 2026-01-01 AND product_tier = 'enterprise'
          IMPACTING total_sales
-         WITH "Enterprise pricing changed"`,
+         BEFORE "v1 ent" "Enterprise pricing v1"
+         AFTER  "v2 ent" "Enterprise pricing v2"`,
     ],
     database: {
       columns: ["product_tier", "total_sales"],
@@ -296,15 +369,20 @@ describe("scenarios — boundaries", () => {
     expect: {
       reconciliation: { count: 1, entryNames: ["ltv_gov_redef"] },
       decorations: [
-        { matches: 1, entryNames: ["ltv_gov_redef"] }, // enterprise — straddles + scope match
-        { matches: 0 }, // consumer — straddles but scope mismatch
+        {
+          matches: 1,
+          entryNames: ["ltv_gov_redef"],
+          severity: "error",
+          boundarySides: ["straddles"],
+        }, // enterprise — in scope, straddles
+        { matches: 0 }, // consumer — outside scope, no annotation
       ],
     },
   });
 
-  scenario("boundary matches a metric not impacted: no match", {
+  scenario("boundary on different metric: no match", {
     lexicon: [
-      `REGISTER boundary aov_redef AT 2026-01-01 IMPACTING average_order_value WITH "x"`,
+      `REGISTER boundary aov_redef AT 2026-01-01 IMPACTING average_order_value BEFORE "old" "v1" AFTER "new" "v2"`,
     ],
     database: {
       columns: ["total_sales"],
@@ -314,6 +392,28 @@ describe("scenarios — boundaries", () => {
     expect: {
       reconciliation: { count: 0 },
       decorations: [{ matches: 0 }],
+      historicalNotes: { count: 0 },
+    },
+  });
+
+  scenario("historical note suppressed when query pins an incompatible scope", {
+    // Boundary scoped to enterprise; query pins consumer. Pre-cut query
+    // but scope-incompatible → no historical note.
+    lexicon: [
+      `REGISTER boundary enterprise_redef
+         AT 2026-01-01 AND product_tier = 'enterprise'
+         IMPACTING total_sales
+         BEFORE "a" "v1" AFTER "b" "v2"`,
+    ],
+    database: {
+      columns: ["total_sales"],
+      rows: [[100]],
+    },
+    query: "COMPUTE total_sales OVER 2025-Q4 AND product_tier = 'consumer'",
+    expect: {
+      reconciliation: { count: 0 },
+      decorations: [{ matches: 0 }],
+      historicalNotes: { count: 0 },
     },
   });
 });

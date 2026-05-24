@@ -107,21 +107,21 @@ describe("validate REGISTER — happy paths", () => {
 describe("validate REGISTER boundary — happy paths", () => {
   it("validates a bare AT + IMPACTING boundary", () => {
     const errors = parseAndValidate(
-      `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING total_sales WITH "x"`
+      `REGISTER boundary metric_redef AT 2026-01-01 IMPACTING total_sales BEFORE "a" "x" AFTER "b" "y"`
     );
     assert.deepEqual(errors, []);
   });
 
   it("validates with categorical scoping", () => {
     const errors = parseAndValidate(
-      `REGISTER boundary x AT 2026-01-01 AND region = 'northeast' IMPACTING total_sales WITH "x"`
+      `REGISTER boundary x AT 2026-01-01 AND region = 'northeast' IMPACTING total_sales BEFORE "a" "x" AFTER "b" "y"`
     );
     assert.deepEqual(errors, []);
   });
 
   it("validates multi-metric boundary when primary times match", () => {
     const errors = parseAndValidate(
-      `REGISTER boundary pricing AT 2026-01-01 IMPACTING total_sales, average_order_value WITH "x"`
+      `REGISTER boundary pricing AT 2026-01-01 IMPACTING total_sales, average_order_value BEFORE "a" "x" AFTER "b" "y"`
     );
     assert.deepEqual(errors, []);
   });
@@ -134,7 +134,7 @@ describe("validate REGISTER boundary — happy paths", () => {
 describe("validate REGISTER boundary — errors", () => {
   it("flags non-day AT (year-form)", () => {
     const errors = parseAndValidate(
-      `REGISTER boundary x AT 2026 IMPACTING total_sales WITH "x"`
+      `REGISTER boundary x AT 2026 IMPACTING total_sales BEFORE "a" "x" AFTER "b" "y"`
     );
     assert.equal(errors.length, 1);
     assert.match(errors[0].message, /day-form/i);
@@ -142,7 +142,7 @@ describe("validate REGISTER boundary — errors", () => {
 
   it("flags non-day AT (quarter-form)", () => {
     const errors = parseAndValidate(
-      `REGISTER boundary x AT 2026-Q1 IMPACTING total_sales WITH "x"`
+      `REGISTER boundary x AT 2026-Q1 IMPACTING total_sales BEFORE "a" "x" AFTER "b" "y"`
     );
     assert.equal(errors.length, 1);
     assert.match(errors[0].message, /day-form/i);
@@ -150,7 +150,7 @@ describe("validate REGISTER boundary — errors", () => {
 
   it("flags non-day AT (month-form)", () => {
     const errors = parseAndValidate(
-      `REGISTER boundary x AT 2026-01 IMPACTING total_sales WITH "x"`
+      `REGISTER boundary x AT 2026-01 IMPACTING total_sales BEFORE "a" "x" AFTER "b" "y"`
     );
     assert.equal(errors.length, 1);
     assert.match(errors[0].message, /day-form/i);
@@ -158,7 +158,7 @@ describe("validate REGISTER boundary — errors", () => {
 
   it("flags unknown metric in IMPACTING", () => {
     const errors = parseAndValidate(
-      `REGISTER boundary x AT 2026-01-01 IMPACTING unknown_metric WITH "x"`
+      `REGISTER boundary x AT 2026-01-01 IMPACTING unknown_metric BEFORE "a" "x" AFTER "b" "y"`
     );
     assert.ok(errors.length > 0);
     assert.equal(errors[0].code, "unknown_metric");
@@ -166,7 +166,7 @@ describe("validate REGISTER boundary — errors", () => {
 
   it("flags unknown dimension in categorical scoping", () => {
     const errors = parseAndValidate(
-      `REGISTER boundary x AT 2026-01-01 AND nonexistent = 'foo' IMPACTING total_sales WITH "x"`
+      `REGISTER boundary x AT 2026-01-01 AND nonexistent = 'foo' IMPACTING total_sales BEFORE "a" "x" AFTER "b" "y"`
     );
     assert.ok(errors.length > 0);
     assert.equal(errors[0].code, "unknown_dimension");

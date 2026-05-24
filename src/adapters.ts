@@ -120,6 +120,20 @@ export interface BoundaryLexiconEntry {
   constraints: ResolvedConstraint[];
   // Metrics affected by this cut.
   metrics: string[];
+  // Regime descriptions. `before.label` and `after.label` are short and
+  // appear inline in result-row notes; `before.description` and
+  // `after.description` are longer prose surfaced in reconciliation and
+  // historical footers.
+  before: RegimeDescription;
+  after: RegimeDescription;
+  // Optional override for the runtime-composed change-description
+  // sentence in straddling/spanning footers. When absent, the runtime
+  // composes wording from `before` and `after`.
+  changeDescription?: string;
+}
+
+export interface RegimeDescription {
+  label: string;
   description: string;
 }
 
@@ -164,19 +178,46 @@ export interface RegionMatch {
   overlap: ResolvedRegion;
 }
 
+// Per-row classification of a row against a boundary cut:
+//   "before"    — row's time interval is entirely pre-cut
+//   "after"     — row's time interval is entirely post-cut
+//   "straddles" — row's interval spans the cut (the value mixes regimes)
+export type BoundarySide = "before" | "after" | "straddles";
+
 export interface BoundaryMatch {
   kind: "boundary";
   entry: BoundaryLexiconEntry;
   metric: string;
   crossedAt: string;
+  // Per-row context. At the query level (returned in
+  // ComputeResult.reconciliation), `side` is always "straddles" — the
+  // query itself spans the cut. At the per-row level (in
+  // RowDecoration.matches), it carries each row's actual relationship.
+  side: BoundarySide;
 }
 
 // Per-row reconciliation: which of the COMPUTE's reconciliation matches
 // apply to a specific result row, given the row's slice of the data.
 // Index-aligned with ComputeResult.results.rows. An empty `matches`
 // array means the row is unaffected by any lexicon entry.
+//
+// `severity` summarizes the worst-case match on this row:
+//   "error" — a boundary match with side=straddles (value mixes regimes)
+//   "warn"  — a region match, or a boundary "before"/"after" annotation
+//             surfacing regime context in a spanning query
+//   undefined — no matches on this row
 export interface RowDecoration {
   matches: LexiconMatch[];
+  severity?: "warn" | "error";
+}
+
+// Historical-context note: emitted when a query falls entirely on the
+// pre-cut side of a boundary. The values themselves aren't flagged
+// (they're internally consistent under the old regime) but the
+// post-cut "now" reading is worth surfacing.
+export interface HistoricalNote {
+  boundary: BoundaryLexiconEntry;
+  metric: string;
 }
 
 export interface LexiconAdapter {

@@ -64,12 +64,15 @@ await ts.execute(`
     WITH "Credential-stuffing campaign inflated session and order counts"
 `);
 
-// REGISTER boundary — annotate a cut in time
+// REGISTER boundary — annotate a cut in time. BEFORE and AFTER describe
+// each side of the cut; the runtime uses them to label result rows by
+// regime and to compose footers for historical and spanning queries.
 await ts.execute(`
   REGISTER boundary ltv_redef_enterprise
     AT 2026-01-01 AND product_tier = 'enterprise'
     IMPACTING LTV
-    WITH "LTV calculation methodology changed for enterprise tier on Jan 1"
+    BEFORE "v1 enterprise LTV" "12-month gross subscription revenue (excludes refunds)"
+    AFTER  "v2 enterprise LTV" "18-month net subscription revenue (includes refunds)"
 `);
 
 // CHECK — query the lexicon directly
@@ -179,34 +182,53 @@ A region triggers a result value when that value's underlying input rows came fr
 REGISTER boundary <name>
   AT <date> [AND <constraint>]...
   IMPACTING <metric>[, <metric>...]
-  WITH "<description>"
+  BEFORE "<short label>" "<long description>"
+  AFTER  "<short label>" "<long description>"
+  [WITH  "<change description>"]
 ```
 
 A boundary is a cut at an instant — a metric redefinition, a pricing change, a logging-pipeline switch. `AT` takes a day-form date; year/quarter/month forms are rejected because boundaries are instants, not intervals. A single `AT` applies to all impacted metrics in the `IMPACTING` clause.
 
-Optional `AND` constraints scope the cut to a sub-population — e.g. for a metric change that affected only one segment:
+Both `BEFORE` and `AFTER` are mandatory and each take two strings: a short label (rendered inline in result-row notes when a query straddles or spans the cut) and a longer description (carried in reconciliation and historical footers). The short label is what an analyst sees in the warn/error cell on a row that touches that regime; the long description is the durable knowledge — "what was true on this side of the cut."
+
+`WITH` is optional. When present it overrides the runtime-composed change-description sentence shown in the footer of a spanning/straddling query. When absent, the runtime composes wording from the `BEFORE` and `AFTER` halves.
+
+Optional `AND` constraints scope the cut to a sub-population — e.g. a metric change that affected only one segment:
 
 ```
 REGISTER boundary ltv_redef_enterprise
   AT 2026-01-01 AND product_tier = 'enterprise'
   IMPACTING LTV
-  WITH "LTV calculation methodology changed for enterprise tier on Jan 1"
+  BEFORE "v1 enterprise LTV" "Computed as 12-month gross subscription revenue (excludes refunds)"
+  AFTER  "v2 enterprise LTV" "Computed as 18-month net subscription revenue (includes refunds)"
 ```
 
 Multi-metric IMPACTING follows the same shared-primary-time rule as regions.
 
 #### Trigger semantics
 
-A boundary triggers a result value when that value's underlying inputs came from *both sides* of the cut — i.e. the value mixes pre-cut and post-cut data. The match is per-row, and group-by granularity is load-bearing in a useful way: an analyst who has already disambiguated to the right grain gets no annotation.
+The runtime treats the **post-cut regime as the operator's "now"**: it's assumed to be normal and isn't annotated. The pre-cut regime is history; queries that live in it get a footer note so the operator knows they're not reading the current state. Queries that span the cut get per-row regime context, and rows whose own interval straddles the cut get a harsher flag — that value mixes two regimes and is semantically incoherent.
+
+| Query shape | Outcome |
+|---|---|
+| Entirely **post-cut** (the "now" world) | **silent** — no row flag, no footer |
+| Entirely **pre-cut** (historical query) | **historical footer** — *"These values were computed under the pre-cut regime: `<BEFORE description>`. As of `<AT>`, …`<AFTER description>`."* (runtime-owned wording) |
+| **Spans the cut**, every row cleanly on one side | **warn (amber)** on each row — note cell carries the regime's short label so the analyst sees which world each row is in |
+| **Spans the cut**, ≥1 row's own interval straddles | **error (red)** on the straddling row (the value mixes regimes); **warn** on the clean rows |
+
+Concretely: a row's interval `[start, end]` straddles the cut at `T` iff `start < T ≤ end`. The "≤" on the right makes "T is the first day of the new regime" the natural reading — a row that starts exactly at `T` contains only post-cut data and does not trigger.
+
+Worked example for `REGISTER boundary aov_redef AT 2026-01-01 IMPACTING average_order_value BEFORE … AFTER …`:
 
 | Query | Outcome |
 |---|---|
-| `COMPUTE LTV OVER 2025-Q4 to 2026-Q1` (no group-by) | one row, inputs span the cut → **flag** |
-| `COMPUTE LTV OVER 2025-Q4 to 2026-Q1 GROUP BY month` | six rows, each from a single month, none span Jan 1 → **no flag** (correctly disambiguated) |
-| `COMPUTE LTV OVER 2025-Q4 to 2026-Q1 GROUP BY quarter` | two rows (Q4, Q1), neither spans the cut → **no flag** |
-| `COMPUTE LTV OVER 2025-Q4 to 2026-Q1 GROUP BY product_tier` (cut scoped to enterprise) | only the `enterprise` row's slice straddles the scoped cut → **only enterprise flags** |
+| `COMPUTE aov OVER 2026-Q1` | silent (entirely post-cut) |
+| `COMPUTE aov OVER 2025-Q4` | historical footer (entirely pre-cut) |
+| `COMPUTE aov OVER 2025-Q4 to 2026-Q1` | **error** — one row, inputs span the cut |
+| `COMPUTE aov OVER 2025-Q4 to 2026-Q1 GROUP BY quarter` | **warn** on each row: Q4 labeled with the BEFORE short label, Q1 with the AFTER label; no row straddles |
+| `COMPUTE aov OVER 2025-Q4 to 2026-Q1 GROUP BY month` | same shape, six rows; the December rows carry the BEFORE label, the Jan-Mar rows the AFTER label |
 
-Concretely: a row's interval `[start, end]` straddles the cut at `T` iff `start < T <= end`. The "<=" on the right makes "T is the first day of the new regime" the natural reading — a row that starts exactly at `T` contains only post-cut data and does not trigger.
+The historical-footer wording is composed by the runtime from the registered `BEFORE` and `AFTER` descriptions. If you want different wording in a specific case, supply `WITH "<sentence>"` on the entry — that override is used in straddling/spanning footers (the historical footer is always runtime-composed since it's structurally a fixed "you are reading history" pattern).
 
 ### CHECK
 
@@ -283,6 +305,7 @@ interface ComputeResult {
   reconciliation: LexiconMatch[];     // query-level lexicon matches
   region: ResolvedRegion;             // resolved OVER region the query addressed
   decorations: RowDecoration[];       // per-row matches, index-aligned with results.rows
+  historicalNotes: HistoricalNote[];  // boundaries the query falls entirely behind
 }
 
 interface RegisterResult {
@@ -310,10 +333,17 @@ interface BoundaryMatch {
   entry: BoundaryLexiconEntry;
   metric: string;                     // the impacted metric the match was found for
   crossedAt: string;                  // ISO date — the boundary's AT
+  side: "before" | "after" | "straddles"; // per-row context; "straddles" at query level
 }
 
 interface RowDecoration {
   matches: LexiconMatch[];            // subset of reconciliation that apply to this row
+  severity?: "warn" | "error";        // "error" if any match is a boundary straddle
+}
+
+interface HistoricalNote {
+  boundary: BoundaryLexiconEntry;     // the boundary the query falls entirely behind
+  metric: string;
 }
 ```
 
@@ -328,6 +358,7 @@ The runtime exports a small set of pure functions for working with regions and p
 - `buildRowRegion(row, groupBys, queryRegion): RowRegion` — derive a result row's effective slice from the query region and any group-by columns.
 - `rowMatchesImpact(rowRegion, impactRegion): boolean` — does the row's slice overlap an impact region? (region-match test)
 - `crossesBoundary(rowRegion, { at, constraints }): boolean` — does the row's slice straddle the cut and is its predicate space compatible with the boundary's scope? (boundary-match test)
+- `classifyRowAgainstBoundary(rowRegion, boundary): "before" | "after" | "straddles" | null` — finer classification used by `decorationsFor` for v0.3.0 per-row regime labeling. Returns `null` if the row is outside the boundary's categorical scope.
 - `decorationsFor(rows, matches, groupBys, queryRegion): RowDecoration[]` — wire the above into per-row decoration arrays. Used internally by `executeCompute` to populate `ComputeResult.decorations`; exported for callers that want to compute decorations against alternative match sets.
 
 ### Errors
@@ -404,7 +435,14 @@ interface BoundaryLexiconEntry {
   at: string;                         // ISO YYYY-MM-DD, the cut's instant
   constraints: ResolvedConstraint[];  // categorical scope (empty = all dim values)
   metrics: string[];                  // impacted metrics
-  description: string;
+  before: RegimeDescription;          // pre-cut regime: { label, description }
+  after: RegimeDescription;           // post-cut regime: { label, description }
+  changeDescription?: string;         // optional WITH override for the footer
+}
+
+interface RegimeDescription {
+  label: string;                      // short — rendered inline in row notes
+  description: string;                // long-form prose — rendered in footers
 }
 
 interface Impact {
