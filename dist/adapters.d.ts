@@ -106,4 +106,5 @@ export interface HistoricalNote {
 export interface LexiconAdapter {
     add(entry: LexiconEntry): Promise<void>;
     list(): Promise<LexiconEntry[]>;
+    remove(name: string): Promise<boolean>;
 }

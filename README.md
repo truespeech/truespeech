@@ -10,7 +10,15 @@ This repository contains the **truespeech runtime** — a small, browser-friendl
 
 ## Status
 
-Three statements are implemented: `COMPUTE` for querying, plus `REGISTER` and `CHECK` for the **lexicon** — a queryable, reconcilable map of contextual knowledge about your data. The lexicon supports two entry kinds:
+Five statements are implemented:
+
+- `COMPUTE` — runs a metric query
+- `REGISTER` — adds a lexicon entry (region or boundary)
+- `CHECK` — looks up lexicon entries for a region (no metric run)
+- `SHOW LEXICON` / `SHOW SCHEMA` — introspect the current lexicon or the available metrics/dimensions
+- `UNREGISTER` — drops a lexicon entry by name
+
+The **lexicon** is a queryable, reconcilable map of contextual knowledge about your data. It supports two entry kinds:
 
 - **regions** — patches of data (a bot attack window, an outage, a known anomaly)
 - **boundaries** — cuts that partition the data (a metric redefinition, a pricing change)
@@ -29,7 +37,9 @@ Reconciliation runs automatically against `COMPUTE`: if any lexicon entry applie
                   adapter
 ```
 
-The runtime is decoupled from any specific semantic layer, database, or lexicon storage via three adapter interfaces. Bring your own implementations, or use the supplied [`osiAdapter`](#osi-adapter) wrapper for the [OSI Runtime](https://github.com/truespeech/osi-runtime). The lexicon adapter is optional — `REGISTER` and `CHECK` require it; plain `COMPUTE` works without it.
+The runtime is decoupled from any specific semantic layer, database, or lexicon storage via three adapter interfaces. Bring your own implementations, or use the supplied [`osiAdapter`](#osi-adapter) wrapper for the [OSI Runtime](https://github.com/truespeech/osi-runtime). The lexicon adapter is optional — `REGISTER` / `UNREGISTER` / `CHECK` / `SHOW LEXICON` require it; `COMPUTE` and `SHOW SCHEMA` work without it.
+
+**v0.4.0 adapter change.** `LexiconAdapter` gained a `remove(name): Promise<boolean>` method to back `UNREGISTER`. Embedders updating from v0.3.0 need to add it; the simplest in-memory implementation is a one-line `findIndex` / `splice`.
 
 ## Quick start
 

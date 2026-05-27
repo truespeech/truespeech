@@ -27,6 +27,15 @@ import { TrueSpeechExecutionError } from "./errors.js";
 export type {
   Statement,
   ComputeStatement,
+  RegisterStatement,
+  RegisterRegionStatement,
+  RegisterBoundaryStatement,
+  ImpactClause,
+  RegimeDescription as AstRegimeDescription,
+  StringLiteral,
+  CheckStatement,
+  ShowStatement,
+  UnregisterStatement,
   MetricRef,
   Identifier,
   OverClause,
@@ -99,6 +108,10 @@ export type {
   ComputeResult,
   RegisterResult,
   CheckResult,
+  ShowLexiconResult,
+  ShowSchemaResult,
+  MetricSummary,
+  UnregisterResult,
 } from "./execute.js";
 
 export {
@@ -194,4 +207,4 @@ export class TrueSpeech {
   }
 }
 
-export const VERSION = "0.3.0";
+export const VERSION = "0.4.0";

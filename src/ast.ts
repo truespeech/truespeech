@@ -13,7 +13,12 @@ import type { Span } from "./source.js";
 
 // ===== Top-level =====
 
-export type Statement = ComputeStatement | RegisterStatement | CheckStatement;
+export type Statement =
+  | ComputeStatement
+  | RegisterStatement
+  | CheckStatement
+  | ShowStatement
+  | UnregisterStatement;
 
 export interface ComputeStatement {
   kind: "compute";
@@ -98,6 +103,31 @@ export interface CheckStatement {
   kind: "check";
   metrics: MetricRef[];
   over: OverClause;
+  span: Span;
+}
+
+// SHOW LEXICON [<name>]    — list every lexicon entry, or fetch one
+//                            entry's full detail by name.
+// SHOW SCHEMA              — list metrics and the dimensions available
+//                            on each.
+//
+// `subject` is a soft keyword (identifier-classified at tokenize time)
+// dispatched here by text, mirroring how REGISTER picks region /
+// boundary. `filter` is only meaningful for `subject === "lexicon"`.
+export interface ShowStatement {
+  kind: "show";
+  subject: "lexicon" | "schema";
+  filter?: Identifier;
+  span: Span;
+}
+
+// UNREGISTER <name> — drop a lexicon entry by name. Kind is not
+// required; the runtime matches by name regardless of region vs.
+// boundary. Non-throwing — the result carries `found: false` if no
+// entry by that name existed.
+export interface UnregisterStatement {
+  kind: "unregister";
+  name: Identifier;
   span: Span;
 }
 

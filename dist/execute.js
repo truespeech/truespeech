@@ -20,6 +20,10 @@ export async function execute(stmt, opts) {
             return executeRegister(stmt, opts);
         case "check":
             return executeCheck(stmt, opts);
+        case "show":
+            return executeShow(stmt, opts);
+        case "unregister":
+            return executeUnregister(stmt, opts);
     }
 }
 async function executeCompute(stmt, opts) {
@@ -221,6 +225,64 @@ async function executeCheck(stmt, opts) {
         }
     }
     return { statement: "check", matches };
+}
+// ===== SHOW =====
+//
+// Introspection statements. Read-only, side-effect-free; non-throwing
+// when filters miss (an empty result is the answer, not an error).
+async function executeShow(stmt, opts) {
+    if (stmt.subject === "lexicon") {
+        if (!opts.lexicon) {
+            throw new Error("SHOW LEXICON requires a lexicon adapter; none was configured");
+        }
+        const all = await opts.lexicon.list();
+        if (stmt.filter) {
+            const filterName = stmt.filter.name;
+            const match = all.find((e) => e.name === filterName);
+            return {
+                statement: "show",
+                subject: "lexicon",
+                entries: match ? [match] : [],
+                filter: filterName,
+            };
+        }
+        return {
+            statement: "show",
+            subject: "lexicon",
+            entries: all,
+        };
+    }
+    // SHOW SCHEMA — list metrics with their per-metric dimensions.
+    const metricInfos = opts.semanticLayer.listMetrics();
+    const metrics = metricInfos.map((m) => {
+        const primary = opts.semanticLayer.primaryTimeForMetric(m.name);
+        return {
+            name: m.name,
+            description: m.description,
+            primaryTime: primary ? primary.name : null,
+            dimensions: opts.semanticLayer.dimensionsForMetric(m.name),
+        };
+    });
+    return {
+        statement: "show",
+        subject: "schema",
+        metrics,
+    };
+}
+// ===== UNREGISTER =====
+//
+// Drops a lexicon entry by name. Non-throwing when no entry by that
+// name exists; the result's `found: false` carries that information.
+async function executeUnregister(stmt, opts) {
+    if (!opts.lexicon) {
+        throw new Error("UNREGISTER requires a lexicon adapter; none was configured");
+    }
+    const found = await opts.lexicon.remove(stmt.name.name);
+    return {
+        statement: "unregister",
+        name: stmt.name.name,
+        found,
+    };
 }
 // ===== Historical-note detection (used by COMPUTE) =====
 //

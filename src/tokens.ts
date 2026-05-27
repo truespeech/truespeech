@@ -56,6 +56,12 @@ export const KEYWORDS: ReadonlySet<string> = new Set([
   // override for the runtime-composed change-description footer.
   "before",
   "after",
+  // Introspection + removal statements (v0.4.0). SHOW takes a soft-
+  // keyword subject ("lexicon" or "schema") parsed as an identifier so
+  // it doesn't conflict with any user dimension/metric named lexicon /
+  // schema. UNREGISTER drops a lexicon entry by name regardless of kind.
+  "show",
+  "unregister",
 ]);
 
 export const GRAINS: ReadonlySet<string> = new Set([

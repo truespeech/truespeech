@@ -88,6 +88,12 @@ export function mockLexicon(seed: LexiconEntry[] = []): MockLexicon {
       entries.push(entry);
     },
     list: async () => entries,
+    remove: async (name: string) => {
+      const idx = entries.findIndex((e) => e.name === name);
+      if (idx === -1) return false;
+      entries.splice(idx, 1);
+      return true;
+    },
   };
 }
 

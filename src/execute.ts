@@ -17,6 +17,8 @@ import type {
   ComputeStatement,
   RegisterStatement,
   CheckStatement,
+  ShowStatement,
+  UnregisterStatement,
   TimeRegion,
   TimeLiteral,
   Constraint,
@@ -31,6 +33,7 @@ import type {
   LexiconEntry,
   LexiconMatch,
   Impact,
+  MetricInfo,
   SemanticQuery,
   WhereClause,
   GroupByClause as OsiGroupBy,
@@ -60,7 +63,13 @@ export interface ExecuteOpts {
   lexicon?: LexiconAdapter;
 }
 
-export type ExecuteResult = ComputeResult | RegisterResult | CheckResult;
+export type ExecuteResult =
+  | ComputeResult
+  | RegisterResult
+  | CheckResult
+  | ShowLexiconResult
+  | ShowSchemaResult
+  | UnregisterResult;
 
 export interface ComputeResult {
   statement: "compute";
@@ -94,6 +103,46 @@ export interface CheckResult {
   matches: LexiconMatch[];
 }
 
+// SHOW LEXICON [<name>] — surfaces lexicon entries for inspection.
+// `filter` echoes the optional name from the statement; when present,
+// `entries` is either a single-element list (the matching entry) or
+// empty (no such entry). When `filter` is absent, `entries` is every
+// entry currently in the lexicon.
+export interface ShowLexiconResult {
+  statement: "show";
+  subject: "lexicon";
+  entries: LexiconEntry[];
+  filter?: string;
+}
+
+// SHOW SCHEMA — surfaces the available metrics and the dimensions on
+// each metric's dataset. The runtime does not de-duplicate dimensions
+// across metrics — different metrics on different datasets can have
+// different dimension surfaces, and the per-metric view is the more
+// honest one. The caller can flatten and de-dup at render time if it
+// wants a single dimension list.
+export interface ShowSchemaResult {
+  statement: "show";
+  subject: "schema";
+  metrics: MetricSummary[];
+}
+
+export interface MetricSummary {
+  name: string;
+  description?: string;
+  primaryTime: string | null;
+  dimensions: DimensionInfo[];
+}
+
+// UNREGISTER <name> — drops a lexicon entry by name regardless of
+// kind. `found` is false if no entry by that name existed; the
+// statement does not throw in that case.
+export interface UnregisterResult {
+  statement: "unregister";
+  name: string;
+  found: boolean;
+}
+
 export async function execute(
   stmt: Statement,
   opts: ExecuteOpts
@@ -105,6 +154,10 @@ export async function execute(
       return executeRegister(stmt, opts);
     case "check":
       return executeCheck(stmt, opts);
+    case "show":
+      return executeShow(stmt, opts);
+    case "unregister":
+      return executeUnregister(stmt, opts);
   }
 }
 
@@ -345,6 +398,79 @@ async function executeCheck(
   }
 
   return { statement: "check", matches };
+}
+
+// ===== SHOW =====
+//
+// Introspection statements. Read-only, side-effect-free; non-throwing
+// when filters miss (an empty result is the answer, not an error).
+
+async function executeShow(
+  stmt: ShowStatement,
+  opts: ExecuteOpts
+): Promise<ShowLexiconResult | ShowSchemaResult> {
+  if (stmt.subject === "lexicon") {
+    if (!opts.lexicon) {
+      throw new Error(
+        "SHOW LEXICON requires a lexicon adapter; none was configured"
+      );
+    }
+    const all = await opts.lexicon.list();
+    if (stmt.filter) {
+      const filterName = stmt.filter.name;
+      const match = all.find((e) => e.name === filterName);
+      return {
+        statement: "show",
+        subject: "lexicon",
+        entries: match ? [match] : [],
+        filter: filterName,
+      };
+    }
+    return {
+      statement: "show",
+      subject: "lexicon",
+      entries: all,
+    };
+  }
+
+  // SHOW SCHEMA — list metrics with their per-metric dimensions.
+  const metricInfos = opts.semanticLayer.listMetrics();
+  const metrics: MetricSummary[] = metricInfos.map((m: MetricInfo) => {
+    const primary = opts.semanticLayer.primaryTimeForMetric(m.name);
+    return {
+      name: m.name,
+      description: m.description,
+      primaryTime: primary ? primary.name : null,
+      dimensions: opts.semanticLayer.dimensionsForMetric(m.name),
+    };
+  });
+  return {
+    statement: "show",
+    subject: "schema",
+    metrics,
+  };
+}
+
+// ===== UNREGISTER =====
+//
+// Drops a lexicon entry by name. Non-throwing when no entry by that
+// name exists; the result's `found: false` carries that information.
+
+async function executeUnregister(
+  stmt: UnregisterStatement,
+  opts: ExecuteOpts
+): Promise<UnregisterResult> {
+  if (!opts.lexicon) {
+    throw new Error(
+      "UNREGISTER requires a lexicon adapter; none was configured"
+    );
+  }
+  const found = await opts.lexicon.remove(stmt.name.name);
+  return {
+    statement: "unregister",
+    name: stmt.name.name,
+    found,
+  };
 }
 
 // ===== Historical-note detection (used by COMPUTE) =====

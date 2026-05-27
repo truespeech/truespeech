@@ -99,12 +99,18 @@ class Parser {
         if (this.check("keyword", "check")) {
             return this.parseCheck();
         }
+        if (this.check("keyword", "show")) {
+            return this.parseShow();
+        }
+        if (this.check("keyword", "unregister")) {
+            return this.parseUnregister();
+        }
         if (this.isAtEnd()) {
             this.errorHere("unexpected_eof", "Empty input — expected a statement");
             return null;
         }
         const tok = this.peek();
-        this.errorAt(tok.span, "unexpected_token", `Expected COMPUTE, REGISTER, or CHECK, got "${tok.text}"`);
+        this.errorAt(tok.span, "unexpected_token", `Expected COMPUTE, REGISTER, CHECK, SHOW, or UNREGISTER, got "${tok.text}"`);
         return null;
     }
     // ===== COMPUTE =====
@@ -361,6 +367,61 @@ class Parser {
             metrics,
             over,
             span: spanFrom(checkTok.span, lastTok.span ?? checkTok.span),
+        };
+    }
+    // ===== SHOW =====
+    parseShow() {
+        const showTok = this.advance(); // SHOW
+        // Subject is a soft keyword (identifier-classified at tokenize
+        // time) dispatched here by text — same pattern as REGISTER's
+        // region / boundary subjects.
+        const subjectTok = this.peek();
+        if (subjectTok.kind !== "identifier") {
+            this.errorAt(subjectTok.span, "expected_token", `Expected subject after SHOW (lexicon or schema), got "${subjectTok.text}"`, "SHOW LEXICON [<name>] or SHOW SCHEMA");
+            return null;
+        }
+        const subjectText = subjectTok.text.toLowerCase();
+        if (subjectText !== "lexicon" && subjectText !== "schema") {
+            this.errorAt(subjectTok.span, "expected_token", `Unknown SHOW subject "${subjectTok.text}"`, "Valid subjects: lexicon, schema");
+            return null;
+        }
+        this.advance(); // subject
+        let filter;
+        if (subjectText === "lexicon" && this.check("identifier")) {
+            // Optional name filter for SHOW LEXICON <name>.
+            const nameTok = this.advance();
+            filter = { name: nameTok.text, span: nameTok.span };
+        }
+        this.matchPunct(";"); // optional terminator
+        if (!this.isAtEnd()) {
+            const tok = this.peek();
+            this.errorAt(tok.span, "unexpected_token", `Unexpected token "${tok.text}" after end of statement`);
+        }
+        const lastTok = this.tokens[Math.max(0, this.pos - 1)];
+        return {
+            kind: "show",
+            subject: subjectText,
+            filter,
+            span: spanFrom(showTok.span, lastTok.span ?? showTok.span),
+        };
+    }
+    // ===== UNREGISTER =====
+    parseUnregister() {
+        const unregTok = this.advance(); // UNREGISTER
+        const nameTok = this.expect("identifier", undefined, "expected_token", "Expected an entry name after UNREGISTER", "UNREGISTER <name> drops the lexicon entry by that name.");
+        if (!nameTok)
+            return null;
+        const name = { name: nameTok.text, span: nameTok.span };
+        this.matchPunct(";"); // optional terminator
+        if (!this.isAtEnd()) {
+            const tok = this.peek();
+            this.errorAt(tok.span, "unexpected_token", `Unexpected token "${tok.text}" after end of statement`);
+        }
+        const lastTok = this.tokens[Math.max(0, this.pos - 1)];
+        return {
+            kind: "unregister",
+            name,
+            span: spanFrom(unregTok.span, lastTok.span ?? unregTok.span),
         };
     }
     // ===== Metric list =====

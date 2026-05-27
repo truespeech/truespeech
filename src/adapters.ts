@@ -223,4 +223,9 @@ export interface HistoricalNote {
 export interface LexiconAdapter {
   add(entry: LexiconEntry): Promise<void>;
   list(): Promise<LexiconEntry[]>;
+  // Drop the entry whose name matches. Returns true if an entry was
+  // removed, false if no entry by that name existed. Non-throwing —
+  // the caller decides whether "not found" is an error.
+  // Added in v0.4.0 to back the UNREGISTER statement.
+  remove(name: string): Promise<boolean>;
 }
