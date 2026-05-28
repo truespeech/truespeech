@@ -318,6 +318,7 @@ function analyzeRegisterRegion(tokens) {
     let i = 3;
     while (i < tokens.length && tokenIsKeyword(tokens[i], "impacting")) {
         i++;
+        const metricListStart = i;
         // Metric list
         while (i < tokens.length) {
             if (tokens[i].kind !== "identifier")
@@ -333,6 +334,8 @@ function analyzeRegisterRegion(tokens) {
             }
             break;
         }
+        if (i === metricListStart)
+            return { metric: true };
         if (i >= tokens.length)
             return { keywords: ["OVER"] };
         if (!tokenIsKeyword(tokens[i], "over"))
@@ -382,6 +385,7 @@ function analyzeRegisterBoundary(tokens) {
         return { keywords: ["AND", "IMPACTING"] };
     }
     i++;
+    const boundaryMetricListStart = i;
     // Metric list
     while (i < tokens.length) {
         if (tokens[i].kind !== "identifier")
@@ -397,6 +401,8 @@ function analyzeRegisterBoundary(tokens) {
         }
         break;
     }
+    if (i === boundaryMetricListStart)
+        return { metric: true };
     if (i >= tokens.length)
         return { keywords: ["BEFORE"] };
     if (!tokenIsKeyword(tokens[i], "before"))

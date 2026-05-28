@@ -1,6 +1,6 @@
 {
   "name": "truespeech",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "True Speech runtime — a language for codifying the data analytics practice on top of semantic layers.",
   "type": "module",
   "devDependencies": {
