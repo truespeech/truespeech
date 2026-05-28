@@ -108,3 +108,15 @@ export interface LexiconAdapter {
     list(): Promise<LexiconEntry[]>;
     remove(name: string): Promise<boolean>;
 }
+export type CompletionKind = "keyword" | "soft-keyword" | "metric" | "dimension" | "grain" | "operator" | "lexicon-entry" | "time-literal" | "string-literal" | "number-literal" | "identifier";
+export interface Completion {
+    text: string;
+    kind: CompletionKind;
+    hint?: string;
+}
+export interface CompletionResult {
+    prefix: string;
+    start: number;
+    end: number;
+    candidates: Completion[];
+}

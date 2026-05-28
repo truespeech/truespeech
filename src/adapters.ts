@@ -229,3 +229,80 @@ export interface LexiconAdapter {
   // Added in v0.4.0 to back the UNREGISTER statement.
   remove(name: string): Promise<boolean>;
 }
+
+// ===== Completion (v0.5.0) =====
+//
+// `TrueSpeech.complete(source, position)` returns the set of valid
+// next tokens at a cursor position, suitable for driving a Tab-style
+// autocomplete UI. The analyzer walks the tokens up to the cursor,
+// re-derives what the parser would expect next, and materializes
+// concrete candidates by querying the semantic layer (for metric and
+// dimension names) and the lexicon (for entry names).
+
+export type CompletionKind =
+  // Reserved grammar word from KEYWORDS / TIME_KEYWORDS / GRAINS in
+  // tokens.ts; suggested in upper case as a typographic convention,
+  // but the parser accepts any case.
+  | "keyword"
+  // "Soft" keywords that the tokenizer classifies as identifiers and
+  // the parser dispatches on by text (region, boundary, lexicon,
+  // schema). Same casing convention as keywords.
+  | "soft-keyword"
+  // A metric name from the semantic layer.
+  | "metric"
+  // A dimension name from the semantic layer. Filtered to the active
+  // metric's dataset when one has been picked already.
+  | "dimension"
+  // A bare time grain (day / week / month / quarter / year).
+  | "grain"
+  // A comparison operator (=, !=, >, <, >=, <=).
+  | "operator"
+  // A registered lexicon entry name (for UNREGISTER, SHOW LEXICON,
+  // and similar name-based references).
+  | "lexicon-entry"
+  // A time literal is expected at this position (year, quarter,
+  // month, day, range). No concrete candidates — consumers typically
+  // surface a hint rather than suggest a specific date.
+  | "time-literal"
+  // A string literal is expected (e.g. WITH "<description>"). No
+  // concrete candidates.
+  | "string-literal"
+  // A number literal is expected (e.g. LIMIT 10). No concrete
+  // candidates.
+  | "number-literal"
+  // A free-form identifier is expected (e.g. the name on REGISTER
+  // region <name>). No concrete candidates.
+  | "identifier";
+
+export interface Completion {
+  // What to insert. For keywords / soft-keywords / grains, this is
+  // the canonical form (upper-case for keywords, lower-case for soft
+  // keywords and grains). For metrics, dimensions, and lexicon
+  // entries, it's the actual name from the model.
+  text: string;
+  kind: CompletionKind;
+  // Optional one-line human-readable hint a UI can render alongside
+  // the candidate (e.g. a metric's description).
+  hint?: string;
+}
+
+export interface CompletionResult {
+  // The partial text being completed, taken from the source between
+  // the start of the current token and the cursor. Empty if the
+  // cursor sits at a token boundary (after whitespace or at the
+  // start of the source).
+  prefix: string;
+  // Source offset where the current partial token starts. Consumers
+  // replace [start, end) with the chosen completion's text.
+  start: number;
+  // Source offset of the cursor — always equal to the `position`
+  // argument that was passed to complete().
+  end: number;
+  // Valid completions at this position, filtered to those whose text
+  // case-insensitively starts with `prefix`. Includes placeholder
+  // entries for non-concrete kinds (time-literal, string-literal,
+  // number-literal, identifier) with an empty `text` and a `hint` —
+  // consumers can surface these as "type a date" / "type a name"
+  // affordances rather than insertable choices.
+  candidates: Completion[];
+}

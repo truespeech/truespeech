@@ -41,6 +41,8 @@ The runtime is decoupled from any specific semantic layer, database, or lexicon 
 
 **v0.4.0 adapter change.** `LexiconAdapter` gained a `remove(name): Promise<boolean>` method to back `UNREGISTER`. Embedders updating from v0.3.0 need to add it; the simplest in-memory implementation is a one-line `findIndex` / `splice`.
 
+**v0.5.0 adds Tab autocomplete.** A new `TrueSpeech.complete(source, position)` method returns the set of valid next tokens at a cursor position — keywords, metric names, dimension names, lexicon entry names, and structural hints for time literals / strings / numbers. Drives shell-style Tab UX in editor surfaces (the sandbox notebook uses it for in-line discoverability). No adapter changes.
+
 ## Quick start
 
 ```typescript

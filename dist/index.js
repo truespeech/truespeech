@@ -9,6 +9,7 @@ import { tokenize as tokenizeSource } from "./tokenize.js";
 import { parse as parseTokens } from "./parse.js";
 import { validate as validateAst } from "./validate.js";
 import { execute as executeAst } from "./execute.js";
+import { complete as completeAt } from "./complete.js";
 import { TrueSpeechExecutionError } from "./errors.js";
 export { TrueSpeechExecutionError, renderError, renderErrors, } from "./errors.js";
 export { resultColumnNames } from "./validate.js";
@@ -33,6 +34,17 @@ export class TrueSpeech {
     // Pure. Always returns a list (possibly empty) of validation errors.
     validate(ast) {
         return { errors: validateAst(ast, this.opts.semanticLayer) };
+    }
+    // Grammar-aware Tab autocomplete. Given a source string and a
+    // cursor position (character offset), returns the valid next
+    // tokens at that position, materialized against the configured
+    // semantic layer (for metric / dimension names) and lexicon (for
+    // entry names). Suitable for driving an editor's Tab UX.
+    async complete(source, position) {
+        return completeAt(source, position, {
+            semanticLayer: this.opts.semanticLayer,
+            lexicon: this.opts.lexicon,
+        });
     }
     // Compose all four phases. Throws TrueSpeechExecutionError if any
     // phase produced errors — the editor should call the individual

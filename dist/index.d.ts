@@ -3,8 +3,9 @@ import type { SemanticLayerAdapter, DatabaseAdapter, LexiconAdapter } from "./ad
 import type { TrueSpeechError } from "./errors.js";
 import type { ExecuteResult } from "./execute.js";
 import type { Token } from "./tokens.js";
+import type { CompletionResult } from "./adapters.js";
 export type { Statement, ComputeStatement, RegisterStatement, RegisterRegionStatement, RegisterBoundaryStatement, ImpactClause, RegimeDescription as AstRegimeDescription, StringLiteral, CheckStatement, ShowStatement, UnregisterStatement, MetricRef, Identifier, OverClause, TimeRegion, AllTimeRegion, CalendarRegion, RangeRegion, UntilRegion, SinceRegion, TimeLiteral, CalendarUnit, Constraint, ConstraintPredicate, ComparisonPredicate, ComparisonOperator, InSetPredicate, InTimeRegionPredicate, NotInSetPredicate, ConstraintValue, StringValue, NumberValue, TimeLiteralValue, GroupByClause, Grain, BareGrainGroupBy, DimensionGroupBy, TimeDimensionGroupBy, OrderByClause, OrderDirection, NumberLiteral, } from "./ast.js";
-export type { SemanticLayerAdapter, DatabaseAdapter, LexiconAdapter, LexiconEntry, RegionLexiconEntry, BoundaryLexiconEntry, RegimeDescription, Impact, ResolvedRegion, ResolvedConstraint, LexiconMatch, RegionMatch, BoundaryMatch, BoundarySide, RowDecoration, HistoricalNote, MetricInfo, DimensionInfo, SemanticQuery, WhereClause, WhereOperator, GroupByClause as SemanticGroupByClause, OrderByClause as SemanticOrderByClause, QueryResult, } from "./adapters.js";
+export type { SemanticLayerAdapter, DatabaseAdapter, LexiconAdapter, LexiconEntry, RegionLexiconEntry, BoundaryLexiconEntry, RegimeDescription, Impact, ResolvedRegion, ResolvedConstraint, LexiconMatch, RegionMatch, BoundaryMatch, BoundarySide, RowDecoration, HistoricalNote, MetricInfo, DimensionInfo, SemanticQuery, WhereClause, WhereOperator, GroupByClause as SemanticGroupByClause, OrderByClause as SemanticOrderByClause, QueryResult, Completion, CompletionKind, CompletionResult, } from "./adapters.js";
 export type { Token, TokenKind } from "./tokens.js";
 export type { Span, Position } from "./source.js";
 export type { TrueSpeechError, ErrorCode, RelatedSpan, } from "./errors.js";
@@ -33,6 +34,7 @@ export declare class TrueSpeech {
     tokenize(source: string): Token[];
     parse(source: string): ParseResult;
     validate(ast: Statement): ValidateResult;
+    complete(source: string, position: number): Promise<CompletionResult>;
     execute(source: string): Promise<ExecuteResult>;
 }
 export declare const VERSION = "0.4.0";

@@ -20,6 +20,8 @@ import { tokenize as tokenizeSource } from "./tokenize.js";
 import { parse as parseTokens } from "./parse.js";
 import { validate as validateAst } from "./validate.js";
 import { execute as executeAst } from "./execute.js";
+import { complete as completeAt } from "./complete.js";
+import type { CompletionResult } from "./adapters.js";
 import { TrueSpeechExecutionError } from "./errors.js";
 
 // ===== Re-exports =====
@@ -93,6 +95,9 @@ export type {
   GroupByClause as SemanticGroupByClause,
   OrderByClause as SemanticOrderByClause,
   QueryResult,
+  Completion,
+  CompletionKind,
+  CompletionResult,
 } from "./adapters.js";
 
 export type { Token, TokenKind } from "./tokens.js";
@@ -178,6 +183,18 @@ export class TrueSpeech {
     return { errors: validateAst(ast, this.opts.semanticLayer) };
   }
 
+  // Grammar-aware Tab autocomplete. Given a source string and a
+  // cursor position (character offset), returns the valid next
+  // tokens at that position, materialized against the configured
+  // semantic layer (for metric / dimension names) and lexicon (for
+  // entry names). Suitable for driving an editor's Tab UX.
+  async complete(source: string, position: number): Promise<CompletionResult> {
+    return completeAt(source, position, {
+      semanticLayer: this.opts.semanticLayer,
+      lexicon: this.opts.lexicon,
+    });
+  }
+
   // Compose all four phases. Throws TrueSpeechExecutionError if any
   // phase produced errors — the editor should call the individual
   // phase methods if it needs errors-as-data.
@@ -207,4 +224,4 @@ export class TrueSpeech {
   }
 }
 
-export const VERSION = "0.4.0";
+export const VERSION = "0.5.0";
