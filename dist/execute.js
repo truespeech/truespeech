@@ -236,14 +236,14 @@ async function executeShow(stmt, opts) {
             throw new Error("SHOW LEXICON requires a lexicon adapter; none was configured");
         }
         const all = await opts.lexicon.list();
-        if (stmt.filter) {
-            const filterName = stmt.filter.name;
-            const match = all.find((e) => e.name === filterName);
+        if (stmt.filters && stmt.filters.length > 0) {
+            const filterNames = stmt.filters.map((f) => f.name);
+            const wanted = new Set(filterNames);
             return {
                 statement: "show",
                 subject: "lexicon",
-                entries: match ? [match] : [],
-                filter: filterName,
+                entries: all.filter((e) => wanted.has(e.name)),
+                filters: filterNames,
             };
         }
         return {

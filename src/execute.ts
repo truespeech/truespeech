@@ -103,16 +103,17 @@ export interface CheckResult {
   matches: LexiconMatch[];
 }
 
-// SHOW LEXICON [<name>] — surfaces lexicon entries for inspection.
-// `filter` echoes the optional name from the statement; when present,
-// `entries` is either a single-element list (the matching entry) or
-// empty (no such entry). When `filter` is absent, `entries` is every
+// SHOW LEXICON [<name>[, <name>...]] — surfaces lexicon entries for
+// inspection. `filters` echoes the optional name list from the
+// statement; when present, `entries` contains only the entries whose
+// names appear in the filter list (names with no matching entry are
+// silently dropped). When `filters` is absent, `entries` is every
 // entry currently in the lexicon.
 export interface ShowLexiconResult {
   statement: "show";
   subject: "lexicon";
   entries: LexiconEntry[];
-  filter?: string;
+  filters?: string[];
 }
 
 // SHOW SCHEMA — surfaces the available metrics and the dimensions on
@@ -416,14 +417,14 @@ async function executeShow(
       );
     }
     const all = await opts.lexicon.list();
-    if (stmt.filter) {
-      const filterName = stmt.filter.name;
-      const match = all.find((e) => e.name === filterName);
+    if (stmt.filters && stmt.filters.length > 0) {
+      const filterNames = stmt.filters.map((f) => f.name);
+      const wanted = new Set(filterNames);
       return {
         statement: "show",
         subject: "lexicon",
-        entries: match ? [match] : [],
-        filter: filterName,
+        entries: all.filter((e) => wanted.has(e.name)),
+        filters: filterNames,
       };
     }
     return {

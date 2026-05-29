@@ -515,8 +515,23 @@ function analyzeShow(tokens: Token[]): Expectation {
   }
   const subject = subjectTok.text.toLowerCase();
   if (subject === "lexicon") {
-    // Optional name filter
-    if (tokens.length === 2) return { lexiconEntry: true };
+    // SHOW LEXICON [<name>[, <name>...]] — walk the identifier/comma
+    // pairs and surface another entry candidate after a trailing
+    // comma. Once a name is in place, no candidate is offered (the
+    // user can type a comma to keep going).
+    let i = 2;
+    if (i >= tokens.length) return { lexiconEntry: true };
+    while (i < tokens.length) {
+      if (tokens[i].kind !== "identifier") break;
+      i++;
+      if (i >= tokens.length) return {};
+      if (tokens[i].kind === "punctuation" && tokens[i].text === ",") {
+        i++;
+        if (i >= tokens.length) return { lexiconEntry: true };
+        continue;
+      }
+      break;
+    }
   }
   return {};
 }

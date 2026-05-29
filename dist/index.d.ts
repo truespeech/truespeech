@@ -38,4 +38,4 @@ export declare class TrueSpeech {
     complete(source: string, position: number): Promise<CompletionResult>;
     execute(source: string): Promise<ExecuteResult>;
 }
-export declare const VERSION = "0.6.0";
+export declare const VERSION = "0.7.0";

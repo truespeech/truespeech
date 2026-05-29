@@ -45,6 +45,8 @@ The runtime is decoupled from any specific semantic layer, database, or lexicon 
 
 **v0.6.0 adds concrete time-literal completions.** Pass `timeLiteralYears: number[]` to the `TrueSpeech` constructor and `complete()` emits year / quarter / month candidates (`2026`, `2026-Q1`, `2026-02`, …) at time-literal positions. Embedders that omit the option keep the existing generic hint placeholder. Days are intentionally excluded.
 
+**v0.7.0: SHOW LEXICON takes a name list.** `SHOW LEXICON a, b, c` narrows to the listed entries; the single-name form (`SHOW LEXICON a`) keeps working as a one-element list. The result shape changed accordingly: `ShowLexiconResult.filter?: string` → `filters?: string[]`. Names that don't match any entry are silently dropped (consistent with the prior single-name "no entry" behavior). Embedders consuming the result need to follow the rename.
+
 ## Quick start
 
 ```typescript

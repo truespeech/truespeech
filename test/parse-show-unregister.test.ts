@@ -21,25 +21,38 @@ function expectOk<T>(src: string, kind: string): T {
 // ===========================================================================
 
 describe("parse SHOW — happy paths", () => {
-  it("parses SHOW LEXICON without filter", () => {
+  it("parses SHOW LEXICON without filters", () => {
     const ast = expectOk<ShowStatement>("SHOW LEXICON", "show");
     assert.equal(ast.subject, "lexicon");
-    assert.equal(ast.filter, undefined);
+    assert.equal(ast.filters, undefined);
   });
 
-  it("parses SHOW LEXICON with a name filter", () => {
+  it("parses SHOW LEXICON with a single name filter", () => {
     const ast = expectOk<ShowStatement>(
       "SHOW LEXICON q1_data_quality_issue",
       "show"
     );
     assert.equal(ast.subject, "lexicon");
-    assert.equal(ast.filter?.name, "q1_data_quality_issue");
+    assert.deepEqual(ast.filters?.map((f) => f.name), ["q1_data_quality_issue"]);
+  });
+
+  it("parses SHOW LEXICON with a comma-separated name list", () => {
+    const ast = expectOk<ShowStatement>(
+      "SHOW LEXICON q1_anomaly, aov_redef, ne_outage",
+      "show"
+    );
+    assert.equal(ast.subject, "lexicon");
+    assert.deepEqual(ast.filters?.map((f) => f.name), [
+      "q1_anomaly",
+      "aov_redef",
+      "ne_outage",
+    ]);
   });
 
   it("parses SHOW SCHEMA", () => {
     const ast = expectOk<ShowStatement>("SHOW SCHEMA", "show");
     assert.equal(ast.subject, "schema");
-    assert.equal(ast.filter, undefined);
+    assert.equal(ast.filters, undefined);
   });
 
   it("is case-insensitive on keywords and subject", () => {
@@ -50,6 +63,7 @@ describe("parse SHOW — happy paths", () => {
 
   it("accepts trailing semicolon", () => {
     expectOk<ShowStatement>("SHOW LEXICON;", "show");
+    expectOk<ShowStatement>("SHOW LEXICON a, b;", "show");
     expectOk<ShowStatement>("SHOW SCHEMA;", "show");
   });
 });
@@ -71,6 +85,12 @@ describe("parse SHOW — errors", () => {
     const r = parseSrc("SHOW SCHEMA some_name");
     assert.ok(r.errors.length > 0);
     assert.match(r.errors[0].message, /Unexpected token/i);
+  });
+
+  it("errors when SHOW LEXICON list ends with a trailing comma", () => {
+    const r = parseSrc("SHOW LEXICON a, b,");
+    assert.ok(r.errors.length > 0);
+    assert.match(r.errors[0].message, /Expected lexicon entry name/i);
   });
 });
 

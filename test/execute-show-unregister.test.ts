@@ -26,7 +26,7 @@ function ast(src: string): Statement {
 // ===========================================================================
 
 describe("execute SHOW LEXICON", () => {
-  it("returns all entries when no filter is supplied", async () => {
+  it("returns all entries when no filters are supplied", async () => {
     const lexicon = mockLexicon();
     // Seed two entries through the runtime.
     await execute(
@@ -55,12 +55,12 @@ describe("execute SHOW LEXICON", () => {
     assert.equal(result.statement, "show");
     assert.equal(result.subject, "lexicon");
     assert.equal(result.entries.length, 2);
-    assert.equal(result.filter, undefined);
+    assert.equal(result.filters, undefined);
     const names = result.entries.map((e) => e.name).sort();
     assert.deepEqual(names, ["aov_redef", "q1_anomaly"]);
   });
 
-  it("returns the matching entry when a name filter matches", async () => {
+  it("returns the matching entry when a single name filter matches", async () => {
     const lexicon = mockLexicon();
     await execute(
       ast(
@@ -79,7 +79,59 @@ describe("execute SHOW LEXICON", () => {
 
     assert.equal(result.entries.length, 1);
     assert.equal(result.entries[0].name, "q1_anomaly");
-    assert.equal(result.filter, "q1_anomaly");
+    assert.deepEqual(result.filters, ["q1_anomaly"]);
+  });
+
+  it("narrows to multiple entries when several names are listed", async () => {
+    const lexicon = mockLexicon();
+    for (const name of ["q1_anomaly", "q2_anomaly", "q3_anomaly"]) {
+      await execute(
+        ast(
+          `REGISTER region ${name}
+             IMPACTING total_sales OVER 2026-Q1
+             WITH "anomaly"`
+        ),
+        { semanticLayer: retailSalesMock(), database: mockDatabase(), lexicon }
+      );
+    }
+
+    const result = (await execute(
+      ast("SHOW LEXICON q1_anomaly, q3_anomaly"),
+      {
+        semanticLayer: retailSalesMock(),
+        database: mockDatabase(),
+        lexicon,
+      }
+    )) as ShowLexiconResult;
+
+    const names = result.entries.map((e) => e.name).sort();
+    assert.deepEqual(names, ["q1_anomaly", "q3_anomaly"]);
+    assert.deepEqual(result.filters, ["q1_anomaly", "q3_anomaly"]);
+  });
+
+  it("silently drops names that match no entry", async () => {
+    const lexicon = mockLexicon();
+    await execute(
+      ast(
+        `REGISTER region q1_anomaly
+           IMPACTING total_sales OVER 2026-Q1
+           WITH "Q1 anomaly"`
+      ),
+      { semanticLayer: retailSalesMock(), database: mockDatabase(), lexicon }
+    );
+
+    const result = (await execute(
+      ast("SHOW LEXICON q1_anomaly, nonexistent"),
+      {
+        semanticLayer: retailSalesMock(),
+        database: mockDatabase(),
+        lexicon,
+      }
+    )) as ShowLexiconResult;
+
+    assert.equal(result.entries.length, 1);
+    assert.equal(result.entries[0].name, "q1_anomaly");
+    assert.deepEqual(result.filters, ["q1_anomaly", "nonexistent"]);
   });
 
   it("returns an empty entries list when no entry matches the filter", async () => {
@@ -91,7 +143,7 @@ describe("execute SHOW LEXICON", () => {
     })) as ShowLexiconResult;
 
     assert.equal(result.entries.length, 0);
-    assert.equal(result.filter, "nonexistent");
+    assert.deepEqual(result.filters, ["nonexistent"]);
   });
 
   it("returns an empty entries list when the lexicon is empty", async () => {

@@ -28,7 +28,7 @@ export interface ShowLexiconResult {
     statement: "show";
     subject: "lexicon";
     entries: LexiconEntry[];
-    filter?: string;
+    filters?: string[];
 }
 export interface ShowSchemaResult {
     statement: "show";

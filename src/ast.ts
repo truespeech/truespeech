@@ -106,18 +106,24 @@ export interface CheckStatement {
   span: Span;
 }
 
-// SHOW LEXICON [<name>]    — list every lexicon entry, or fetch one
-//                            entry's full detail by name.
-// SHOW SCHEMA              — list metrics and the dimensions available
-//                            on each.
+// SHOW LEXICON [<name>[, <name>...]]    — list every lexicon entry,
+//                                          or narrow to the named
+//                                          ones (one or more).
+// SHOW SCHEMA                            — list metrics and the
+//                                          dimensions available on
+//                                          each.
 //
 // `subject` is a soft keyword (identifier-classified at tokenize time)
 // dispatched here by text, mirroring how REGISTER picks region /
-// boundary. `filter` is only meaningful for `subject === "lexicon"`.
+// boundary. `filters` is only meaningful for `subject === "lexicon"`;
+// omitted means "every entry," a non-empty list narrows to those
+// specific names. Names that don't match any entry are silently
+// dropped from the result (consistent with the v0.4 single-name
+// "no entry" behavior).
 export interface ShowStatement {
   kind: "show";
   subject: "lexicon" | "schema";
-  filter?: Identifier;
+  filters?: Identifier[];
   span: Span;
 }
 

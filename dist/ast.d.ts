@@ -49,7 +49,7 @@ export interface CheckStatement {
 export interface ShowStatement {
     kind: "show";
     subject: "lexicon" | "schema";
-    filter?: Identifier;
+    filters?: Identifier[];
     span: Span;
 }
 export interface UnregisterStatement {

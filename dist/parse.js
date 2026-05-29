@@ -386,11 +386,21 @@ class Parser {
             return null;
         }
         this.advance(); // subject
-        let filter;
+        let filters;
         if (subjectText === "lexicon" && this.check("identifier")) {
-            // Optional name filter for SHOW LEXICON <name>.
-            const nameTok = this.advance();
-            filter = { name: nameTok.text, span: nameTok.span };
+            // SHOW LEXICON <name>[, <name>...] — one or more entry names.
+            filters = [];
+            const firstTok = this.advance();
+            filters.push({ name: firstTok.text, span: firstTok.span });
+            while (this.matchPunct(",")) {
+                if (!this.check("identifier")) {
+                    const tok = this.peek();
+                    this.errorAt(tok.span, "expected_token", `Expected lexicon entry name after "," in SHOW LEXICON list, got "${tok.text}"`, "SHOW LEXICON <name>[, <name>...]");
+                    break;
+                }
+                const nameTok = this.advance();
+                filters.push({ name: nameTok.text, span: nameTok.span });
+            }
         }
         this.matchPunct(";"); // optional terminator
         if (!this.isAtEnd()) {
@@ -401,7 +411,7 @@ class Parser {
         return {
             kind: "show",
             subject: subjectText,
-            filter,
+            filters,
             span: spanFrom(showTok.span, lastTok.span ?? showTok.span),
         };
     }

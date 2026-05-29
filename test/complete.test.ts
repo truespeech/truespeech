@@ -283,6 +283,27 @@ describe("complete — SHOW", () => {
     assert.ok(kinds(r.candidates).includes("lexicon-entry"));
   });
 
+  it("after SHOW LEXICON <name>, suggests another entry", async () => {
+    const r = await complete(
+      "SHOW LEXICON q1_anomaly, ",
+      25,
+      ctx([{ name: "q1_anomaly" }, { name: "aov_redef" }])
+    );
+    const t = texts(r.candidates);
+    assert.ok(t.includes("q1_anomaly"));
+    assert.ok(t.includes("aov_redef"));
+    assert.ok(kinds(r.candidates).includes("lexicon-entry"));
+  });
+
+  it("after SHOW LEXICON <name> (no comma yet) surfaces no candidates", async () => {
+    const r = await complete(
+      "SHOW LEXICON q1_anomaly ",
+      24,
+      ctx([{ name: "q1_anomaly" }, { name: "aov_redef" }])
+    );
+    assert.deepEqual(texts(r.candidates), []);
+  });
+
   it("after SHOW SCHEMA no further candidates", async () => {
     const r = await complete("SHOW SCHEMA ", 12, ctx());
     assert.deepEqual(texts(r.candidates), []);
