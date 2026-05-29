@@ -20,6 +20,7 @@ export interface TrueSpeechOptions {
     semanticLayer: SemanticLayerAdapter;
     database: DatabaseAdapter;
     lexicon?: LexiconAdapter;
+    timeLiteralYears?: number[];
 }
 export interface ParseResult {
     ast: Statement | null;
@@ -37,4 +38,4 @@ export declare class TrueSpeech {
     complete(source: string, position: number): Promise<CompletionResult>;
     execute(source: string): Promise<ExecuteResult>;
 }
-export declare const VERSION = "0.5.1";
+export declare const VERSION = "0.6.0";

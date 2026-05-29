@@ -4,7 +4,10 @@ import { complete } from "../src/complete.js";
 import type { Completion } from "../src/adapters.js";
 import { mockLexicon, retailSalesMock } from "./helpers/mocks.js";
 
-function ctx(lexiconSeed: { name: string }[] = []) {
+function ctx(
+  lexiconSeed: { name: string }[] = [],
+  extras: { timeLiteralYears?: number[] } = {}
+) {
   return {
     semanticLayer: retailSalesMock(),
     lexicon: mockLexicon(
@@ -15,6 +18,7 @@ function ctx(lexiconSeed: { name: string }[] = []) {
         description: "",
       }))
     ),
+    timeLiteralYears: extras.timeLiteralYears,
   };
 }
 
@@ -302,6 +306,87 @@ describe("complete — UNREGISTER", () => {
       ctx([{ name: "promo_spike" }, { name: "anomaly" }])
     );
     assert.deepEqual(texts(r.candidates), ["promo_spike"]);
+  });
+});
+
+// ===========================================================================
+// Time-literal candidates (timeLiteralYears option)
+// ===========================================================================
+
+describe("complete — time-literal candidates", () => {
+  it("emits year / quarter / month candidates when timeLiteralYears is set", async () => {
+    const r = await complete(
+      "COMPUTE total_sales OVER ",
+      25,
+      ctx([], { timeLiteralYears: [2025, 2026] })
+    );
+    const t = texts(r.candidates);
+    assert.ok(t.includes("2025"));
+    assert.ok(t.includes("2026"));
+    assert.ok(t.includes("2025-Q1"));
+    assert.ok(t.includes("2025-Q4"));
+    assert.ok(t.includes("2026-Q2"));
+    assert.ok(t.includes("2026-02"));
+    assert.ok(t.includes("2025-01"));
+    assert.ok(t.includes("2026-12"));
+    // Existing keyword candidates still surface.
+    assert.ok(t.includes("ALL"));
+    assert.ok(t.includes("UNTIL"));
+    assert.ok(t.includes("SINCE"));
+  });
+
+  it("emits 4 quarters and 12 months per year (plus the year itself)", async () => {
+    const r = await complete(
+      "COMPUTE total_sales OVER ",
+      25,
+      ctx([], { timeLiteralYears: [2026] })
+    );
+    const timeLits = r.candidates
+      .filter((c) => c.kind === "time-literal" && c.text !== "")
+      .map((c) => c.text);
+    // 1 year + 4 quarters + 12 months = 17
+    assert.equal(timeLits.length, 17);
+    assert.ok(timeLits.includes("2026"));
+    for (let q = 1; q <= 4; q++) {
+      assert.ok(timeLits.includes(`2026-Q${q}`));
+    }
+    for (let m = 1; m <= 12; m++) {
+      const mm = String(m).padStart(2, "0");
+      assert.ok(timeLits.includes(`2026-${mm}`));
+    }
+  });
+
+  it("prefix '2026-Q' narrows to the four 2026 quarters", async () => {
+    const r = await complete(
+      "COMPUTE total_sales OVER 2026-Q",
+      31,
+      ctx([], { timeLiteralYears: [2025, 2026] })
+    );
+    const timeLits = r.candidates
+      .filter((c) => c.kind === "time-literal" && c.text !== "")
+      .map((c) => c.text)
+      .sort();
+    assert.deepEqual(timeLits, ["2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4"]);
+  });
+
+  it("falls back to the hint placeholder when timeLiteralYears is not set", async () => {
+    const r = await complete("COMPUTE total_sales OVER ", 25, ctx());
+    const timeLits = r.candidates.filter((c) => c.kind === "time-literal");
+    assert.equal(timeLits.length, 1);
+    assert.equal(timeLits[0].text, "");
+    assert.ok(timeLits[0].hint);
+  });
+
+  it("REGISTER boundary AT position also emits time-literal candidates", async () => {
+    const r = await complete(
+      "REGISTER boundary my_cut AT ",
+      28,
+      ctx([], { timeLiteralYears: [2026] })
+    );
+    const t = texts(r.candidates);
+    assert.ok(t.includes("2026"));
+    assert.ok(t.includes("2026-Q1"));
+    assert.ok(t.includes("2026-06"));
   });
 });
 

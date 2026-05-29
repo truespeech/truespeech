@@ -51,6 +51,10 @@ interface Expectation {
 export interface CompleteOpts {
   semanticLayer: SemanticLayerAdapter;
   lexicon?: LexiconAdapter;
+  // When provided, time-literal completion positions emit concrete
+  // year / quarter / month candidates for each listed year, instead
+  // of the generic hint placeholder. Days are intentionally omitted.
+  timeLiteralYears?: number[];
 }
 
 export async function complete(
@@ -748,7 +752,23 @@ async function materialize(
     }
   }
   if (expectation.timeLiteral) {
-    out.push({ text: "", kind: "time-literal", hint: "year / quarter / month / day" });
+    const years = opts.timeLiteralYears;
+    if (years && years.length > 0) {
+      for (const y of years) {
+        out.push({ text: String(y), kind: "time-literal" });
+        for (let q = 1; q <= 4; q++) {
+          out.push({ text: `${y}-Q${q}`, kind: "time-literal" });
+        }
+        for (let m = 1; m <= 12; m++) {
+          out.push({
+            text: `${y}-${String(m).padStart(2, "0")}`,
+            kind: "time-literal",
+          });
+        }
+      }
+    } else {
+      out.push({ text: "", kind: "time-literal", hint: "year / quarter / month / day" });
+    }
   }
   if (expectation.stringLiteral) {
     out.push({ text: "", kind: "string-literal", hint: 'quoted text' });

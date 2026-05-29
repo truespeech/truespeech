@@ -44,6 +44,7 @@ export class TrueSpeech {
         return completeAt(source, position, {
             semanticLayer: this.opts.semanticLayer,
             lexicon: this.opts.lexicon,
+            timeLiteralYears: this.opts.timeLiteralYears,
         });
     }
     // Compose all four phases. Throws TrueSpeechExecutionError if any
@@ -74,4 +75,4 @@ export class TrueSpeech {
         });
     }
 }
-export const VERSION = "0.5.1";
+export const VERSION = "0.6.0";

@@ -43,6 +43,8 @@ The runtime is decoupled from any specific semantic layer, database, or lexicon 
 
 **v0.5.0 adds Tab autocomplete.** A new `TrueSpeech.complete(source, position)` method returns the set of valid next tokens at a cursor position — keywords, metric names, dimension names, lexicon entry names, and structural hints for time literals / strings / numbers. Drives shell-style Tab UX in editor surfaces (the sandbox notebook uses it for in-line discoverability). No adapter changes.
 
+**v0.6.0 adds concrete time-literal completions.** Pass `timeLiteralYears: number[]` to the `TrueSpeech` constructor and `complete()` emits year / quarter / month candidates (`2026`, `2026-Q1`, `2026-02`, …) at time-literal positions. Embedders that omit the option keep the existing generic hint placeholder. Days are intentionally excluded.
+
 ## Quick start
 
 ```typescript

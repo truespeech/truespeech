@@ -151,6 +151,12 @@ export interface TrueSpeechOptions {
   semanticLayer: SemanticLayerAdapter;
   database: DatabaseAdapter;
   lexicon?: LexiconAdapter;
+  // Years to enumerate when materializing time-literal completions.
+  // When set, `complete()` emits year / quarter / month candidates
+  // (e.g. 2026, 2026-Q1, 2026-02) at time-literal positions. When
+  // omitted, completions at those positions fall back to a generic
+  // hint placeholder. Days are intentionally excluded — too many.
+  timeLiteralYears?: number[];
 }
 
 export interface ParseResult {
@@ -192,6 +198,7 @@ export class TrueSpeech {
     return completeAt(source, position, {
       semanticLayer: this.opts.semanticLayer,
       lexicon: this.opts.lexicon,
+      timeLiteralYears: this.opts.timeLiteralYears,
     });
   }
 
@@ -224,4 +231,4 @@ export class TrueSpeech {
   }
 }
 
-export const VERSION = "0.5.1";
+export const VERSION = "0.6.0";

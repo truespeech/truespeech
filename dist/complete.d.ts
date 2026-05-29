@@ -2,5 +2,6 @@ import type { SemanticLayerAdapter, LexiconAdapter, CompletionResult } from "./a
 export interface CompleteOpts {
     semanticLayer: SemanticLayerAdapter;
     lexicon?: LexiconAdapter;
+    timeLiteralYears?: number[];
 }
 export declare function complete(source: string, position: number, opts: CompleteOpts): Promise<CompletionResult>;
